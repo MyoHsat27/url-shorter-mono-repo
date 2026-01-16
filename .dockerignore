@@ -1,0 +1,25 @@
+# git
+.git
+.gitignore
+
+# node
+node_modules
+**/node_modules
+
+# build outputs
+dist
+build
+.next
+out
+
+# env
+.env
+.env.*
+
+# logs
+*.log
+
+# misc
+coverage
+uploads
+tmp

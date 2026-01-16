@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  url-service:
+    container_name: url-service
+    build:
+      context: .
+      dockerfile: apps/url-service/Dockerfile
+    ports:
+      - "3001:3000"
+    env_file:
+      - .env
+    depends_on:
+      - dynamodb
+      - redis
+    networks:
+      - url-network
+
+  web:
+    container_name: web
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    networks:
+      - url-network
+
+  dynamodb:
+    container_name: dynamodb-local
+    image: amazon/dynamodb-local
+    command: "-jar DynamoDBLocal.jar -sharedDb"
+    ports:
+      - "8000:8000"
+    volumes:
+      - dynamodb-data:/home/dynamodblocal/data
+    networks:
+      - url-network
+
+  redis:
+    container_name: redis-local
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - url-network
+
+volumes:
+  dynamodb-data:
+
+networks:
+  url-network:
+    driver: bridge
