@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.turbo/
+.nx/
+
+# Generated files
+*.d.ts
+*.map
+
+# Caches
+.cache/
+.turbo/
+.swc/
+.eslintcache/
+
+# Logs
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# Env files
+.env
+.env.*
+!.env.example
+
+# Lock files (optional)
+pnpm-lock.yaml
+
+# OS / Editor junk
+.DS_Store
+Thumbs.db
+
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# TypeScript
+*.tsbuildinfo
+
+# Test
+coverage/
+
+# ESLint / Prettier cache
+.eslintcache
+.prettiercache
+
+# Infra
+cdk.out/
+.terraform/
+*.tfstate
+*.tfstate.backup
+
+# Misc
+*.pem
+*.key

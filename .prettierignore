@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+**/dist/
+**/build/
+**/out/
+**/.next/
+
+# Generated files
+**/*.d.ts
+**/*.map
+
+# Caches
+**/.cache/
+**/.turbo/
+**/.swc/
+**/.eslintcache/
+
+# Logs
+*.log
+
+# Lock files (optional)
+pnpm-lock.yaml
