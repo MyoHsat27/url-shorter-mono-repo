@@ -31,9 +31,6 @@ yarn-error.log*
 .env.*
 !.env.example
 
-# Lock files (optional)
-pnpm-lock.yaml
-
 # OS / Editor junk
 .DS_Store
 Thumbs.db
