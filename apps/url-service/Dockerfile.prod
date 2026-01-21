@@ -2,21 +2,26 @@
 FROM node:22-alpine AS builder
 
 RUN corepack enable
-
 WORKDIR /app
 
-# Copy monorepo files first
+# Copy workspace manifests
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-# Copy app package.json
+# Copy ALL package.json files
 COPY apps/url-service/package.json apps/url-service/package.json
+COPY packages/*/package.json packages/*/package.json
 
-# Install ONLY url-service deps
+# Install deps
 RUN pnpm install --filter url-service...
 
 # Copy source
+COPY packages packages
 COPY apps/url-service apps/url-service
 
+# Build packages first
+RUN pnpm -r --filter ./packages/** build
+
+# Build service
 RUN pnpm --filter url-service build
 
 # --- Runtime stage ---
@@ -24,14 +29,14 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+ENV NODE_ENV=production
+
 # Copy compiled output
 COPY --from=builder /app/apps/url-service/dist ./dist
 
 # Copy required node_modules
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/url-service/node_modules ./apps/url-service/node_modules
-
-ENV NODE_ENV=production
 
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

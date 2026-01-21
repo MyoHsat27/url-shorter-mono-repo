@@ -8,14 +8,18 @@ WORKDIR /app
 # Copy monorepo files first
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-# Copy app package.json
+# Copy service & packages source 
 COPY apps/url-service/package.json apps/url-service/package.json
+COPY packages packages
 
-# Install ONLY url-service deps
+# Install deps 
 RUN pnpm install --filter url-service...
 
 # Copy source
 COPY apps/url-service apps/url-service
+
+# Build packages
+RUN pnpm -r --filter ./packages/** build
 
 # Move into app
 WORKDIR /app/apps/url-service

@@ -22,3 +22,9 @@ node_modules/
 
 # Lock files (optional)
 pnpm-lock.yaml
+
+# workflow files
+.github/workflows/ci.yml
+
+# docker files
+docker-compose.yml

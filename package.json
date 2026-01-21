@@ -13,6 +13,8 @@
     "dev:web": "pnpm --filter web dev",
     "build:url-service": "pnpm --filter url-service build",
     "build:web": "pnpm --filter web build",
+    "build:shared": "pnpm --filter shared build",
+    "build:nestjs-common": "pnpm --filter nestjs-common build",
     "test": "pnpm -r test",
     "prepare": "husky"
   },
@@ -31,6 +33,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "prettier": "^3.8.0",
+    "typescript": "^5.9.3",
     "typescript-eslint": "^8.53.0"
   },
   "lint-staged": {

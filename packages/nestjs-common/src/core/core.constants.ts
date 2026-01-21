@@ -1,0 +1,2 @@
+export const CORE_MODULE_OPTIONS = Symbol("CORE_MODULE_OPTIONS");
+export const WINSTON_LOGGER = Symbol("WINSTON_LOGGER");
