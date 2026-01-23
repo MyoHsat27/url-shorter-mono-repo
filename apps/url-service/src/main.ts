@@ -9,11 +9,21 @@ import {
   RequestContextService,
   createRequestContextMiddleware,
 } from "@url-shortner/nestjs-common";
+import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: false,
   });
+
+  const config = new DocumentBuilder()
+    .setTitle("Url Shortner")
+    .setDescription("Url Shortner API")
+    .setVersion("1.0")
+    .addTag("url")
+    .build();
+  const documentFactory = () => SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup("api-docs", app, documentFactory);
 
   const logger = app.get(AppLogger);
   const requestContextService = app.get(RequestContextService);

@@ -1,20 +1,11 @@
 import { ApiProperty } from "@nestjs/swagger";
-import {
-  IsDateString,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  IsUrl,
-} from "class-validator";
 
-export class CreateUrlDto {
+export class UrlDto {
   @ApiProperty({
     description: "The long url to be shortened",
     example: "https://www.google.com",
     type: String,
   })
-  @IsNotEmpty()
-  @IsUrl()
   longUrl: string;
 
   @ApiProperty({
@@ -22,8 +13,6 @@ export class CreateUrlDto {
     example: "user-123",
     type: String,
   })
-  @IsString()
-  @IsOptional()
   userId?: string;
 
   @ApiProperty({
@@ -31,7 +20,5 @@ export class CreateUrlDto {
     example: "2026-06-10T12:00:00Z",
     required: false,
   })
-  @IsOptional()
-  @IsDateString()
   expiresAt?: string;
 }

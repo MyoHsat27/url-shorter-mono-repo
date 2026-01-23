@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   ExceptionFilter,
   Catch,
@@ -12,11 +13,6 @@ import { AppLogger } from "../logger/logger.service";
 import { RequestContextService } from "../request-context/request-context.service";
 import { CORE_MODULE_OPTIONS } from "../core/core.constants";
 import { CoreModuleOptions } from "../core/core.interfaces";
-
-interface ExceptionResponse {
-  message?: string | string[];
-  errorCode?: ErrorCode;
-}
 
 @Catch()
 export class HttpExceptionsFilter implements ExceptionFilter {
@@ -38,15 +34,13 @@ export class HttpExceptionsFilter implements ExceptionFilter {
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
-      const res = exception.getResponse() as ExceptionResponse;
+      const res = exception.getResponse() as any;
 
-      message =
-        (Array.isArray(res.message) ? res.message.join(", ") : res.message) ??
-        exception.message;
+      message = res.message ?? exception.message;
       errorCode = res.errorCode ?? errorCode;
 
-      if (Array.isArray(res.message)) {
-        validationErrors = res.message;
+      if (res.details) {
+        validationErrors = res.details;
         message = "Validation failed";
       }
     }

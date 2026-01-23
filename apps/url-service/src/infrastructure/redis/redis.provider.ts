@@ -1,25 +1,37 @@
 import { Provider } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { AppLogger } from "@url-shortner/nestjs-common";
 import Redis from "ioredis";
+import { AppConfig } from "src/config/configuration";
 
 export const REDIS_CLIENT = "REDIS_CLIENT";
 
 export const redisProvider: Provider = {
   provide: REDIS_CLIENT,
-  useFactory: () => {
+  inject: [ConfigService, AppLogger],
+  useFactory: (configSevice: ConfigService<AppConfig>, logger: AppLogger) => {
+    const redisConfig = configSevice.getOrThrow("database.redis", {
+      infer: true,
+    });
+
     const redis = new Redis({
-      host: process.env.REDIS_HOST,
-      port: Number(process.env.REDIS_PORT || 6379),
-      password: process.env.REDIS_PASSWORD || undefined,
+      host: redisConfig.host,
+      port: redisConfig.port,
+      password: redisConfig.password,
       lazyConnect: false,
       maxRetriesPerRequest: 3,
+      retryStrategy: (times) => {
+        const delay = Math.min(times * 50, 2000);
+        return delay;
+      },
     });
 
     redis.on("connect", () => {
-      console.log("Redis connected");
+      logger.info("Redis connected");
     });
 
     redis.on("error", (err) => {
-      console.error("Redis error", err);
+      logger.error("Redis error", err.message, "RedisProvider");
     });
 
     return redis;

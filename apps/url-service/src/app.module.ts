@@ -3,14 +3,14 @@ import { ConfigService } from "@nestjs/config";
 import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { UrlModule } from "./modules/url/url.module";
-import { ConfigModule } from "./config/config.module";
+import { AppConfigModule } from "./config/config.module";
 import { CoreModule } from "@url-shortner/nestjs-common";
 import { DynamoDBModule, RedisModule } from "./infrastructure";
 
 @Module({
   imports: [
     // Configuration
-    ConfigModule,
+    AppConfigModule,
 
     // Core module
     CoreModule.forRootAsync({
