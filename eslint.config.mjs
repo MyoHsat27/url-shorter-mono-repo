@@ -87,7 +87,7 @@ export default [
       "@typescript-eslint": tseslint.plugin,
     },
     rules: {
-      "prettier/prettier": ["error", { endOfLine: "ls" }],
+      "prettier/prettier": ["error", { endOfLine: "lf" }],
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-floating-promises": "warn",
       "@typescript-eslint/no-unsafe-call": "off",
