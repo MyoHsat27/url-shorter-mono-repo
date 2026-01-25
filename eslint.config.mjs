@@ -21,6 +21,7 @@ export default [
       "prettier.config.*",
       "*.config.cjs",
       "*.config.js",
+      "infra/cdk/*",
     ],
   },
 

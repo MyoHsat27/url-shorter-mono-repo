@@ -17,27 +17,6 @@ export function Header() {
           </span>
         </Link>
         <div className="flex items-center gap-1 sm:gap-2">
-          <nav className="hidden items-center gap-1 sm:flex">
-            <Link
-              href="#"
-              className="rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-            >
-              Features
-            </Link>
-            <Link
-              href="#"
-              className="rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-            >
-              Pricing
-            </Link>
-            <Link
-              href="#"
-              className="rounded-lg px-3 py-2 text-sm font-medium text-neutral-600 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-            >
-              API
-            </Link>
-          </nav>
-          <div className="ml-2 h-5 w-px bg-neutral-200 dark:bg-neutral-800" />
           <ThemeToggle />
         </div>
       </div>
