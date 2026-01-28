@@ -31,8 +31,8 @@ jobs:
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          base: HEAD^
-          ref: HEAD
+          base: ${{ github.event.workflow_run.before }}
+          ref: ${{ github.event.workflow_run.head_sha }}
           filters: |
             deploy:
               - "apps/url-service/**"
