@@ -42,7 +42,7 @@
       "eslint --fix",
       "pnpm --filter @apps/url-service test --bail --findRelatedTests"
     ],
-    "**/*.{tsx,js,jsx,json,md}": [
+    "**/*.{tsx,js,jsx,json,md,yml,yaml}": [
       "prettier --write",
       "eslint --fix"
     ]
