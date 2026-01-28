@@ -7,7 +7,6 @@ export class AppController {
 
   @Get("/health")
   getHello(): string {
-    // Protection test
     return this.appService.getHello();
   }
 }

@@ -73,10 +73,15 @@ fi
 echo "Found Application: $APP_NAME"
 
 DEPLOYMENT_GROUP=$(aws deploy list-deployment-groups \
-  --application-name $APP_NAME \
-  --region $AWS_REGION \
+  --application-name "$APP_NAME" \
+  --region "$AWS_REGION" \
   --query 'deploymentGroups[0]' \
   --output text)
+
+if [ -z "$DEPLOYMENT_GROUP" ] || [ "$DEPLOYMENT_GROUP" = "None" ]; then
+  echo "Error: No deployment groups found for CodeDeploy application '$APP_NAME'."
+  exit 1
+fi
 
 echo "Found Deployment Group: $DEPLOYMENT_GROUP"
 
