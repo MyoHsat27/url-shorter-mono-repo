@@ -15,7 +15,6 @@ export class AlbStack extends Stack {
 
     this.albService = new AlbService(this, "SharedAlb", {
       vpc: props.vpc,
-      // Certificate
     });
   }
 }

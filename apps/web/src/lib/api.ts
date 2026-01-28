@@ -1,4 +1,7 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000";
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+const API_SHORTNER_URL =
+  process.env.NEXT_PUBLIC_SHORTNER_URL || "http://localhost:3000";
 
 export interface CreateUrlRequest {
   longUrl: string;
@@ -46,5 +49,5 @@ export async function createShortUrl(
 }
 
 export function getShortUrl(shortCode: string): string {
-  return `${API_BASE_URL}/${shortCode}`;
+  return `${API_SHORTNER_URL}/${shortCode}`;
 }

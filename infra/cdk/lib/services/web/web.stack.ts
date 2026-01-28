@@ -9,6 +9,7 @@ interface WebStackProps extends StackProps {
   vpc: ec2.IVpc;
   cluster: ecs.ICluster;
   listener: elbv2.IApplicationListener;
+  imageUrl?: string;
 }
 
 export class WebStack extends Stack {
@@ -18,14 +19,15 @@ export class WebStack extends Stack {
     new EcsService(this, "WebService", {
       vpc: props.vpc,
       cluster: props.cluster,
-      memory: 1024,
-      cpu: 512,
-      enableCodeDeploy: true,
+      imageUrl: props.imageUrl,
+      containerName: "web-service",
+      healthPath: "/",
       loadBalancer: {
         listener: props.listener,
-        pathPattern: "/*",
+        pathPattern: "/web/*",
         priority: 20,
       },
+      enableCodeDeploy: true,
     });
   }
 }

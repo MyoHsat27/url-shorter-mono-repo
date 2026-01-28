@@ -12,9 +12,9 @@ export interface EcsServiceProps {
   cpu?: number;
   memory?: number;
   imageUrl?: string;
+  containerName?: string;
   containerPort?: number;
-  environment?: { [key: string]: string };
-  secrets?: { [key: string]: ecs.Secret };
+  healthPath?: string;
   loadBalancer?: {
     listener: elbv2.IApplicationListener;
     pathPattern: string;
@@ -22,6 +22,8 @@ export interface EcsServiceProps {
   };
   enableCodeDeploy?: boolean;
   albSecurityGroup?: ec2.ISecurityGroup;
+  environment?: { [key: string]: string };
+  secrets?: { [key: string]: ecs.Secret };
 }
 
 export class EcsService extends Construct {
@@ -35,15 +37,12 @@ export class EcsService extends Construct {
     const cpu = props.cpu || 512;
     const memory = props.memory || 1024;
 
-    // Determine if we are using the sample image
     const isSampleImage =
       !props.imageUrl || props.imageUrl.includes("amazon-ecs-sample");
 
-    // Sample image listens on port 80, otherwise use provided port or default to 3000
     const containerPort = isSampleImage ? 80 : props.containerPort || 3000;
-    const healthCheckPath = isSampleImage ? "/" : "/health";
+    const healthCheckPath = isSampleImage ? "/" : props.healthPath || "/health";
 
-    // Logging
     const logGroup = new logs.LogGroup(this, "LogGroup", {
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: RemovalPolicy.DESTROY,
@@ -54,17 +53,20 @@ export class EcsService extends Construct {
       memoryLimitMiB: memory,
     });
 
-    const container = this.taskDefinition.addContainer("Container", {
-      image: props.imageUrl
-        ? ecs.ContainerImage.fromRegistry(props.imageUrl)
-        : ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
-      logging: ecs.LogDriver.awsLogs({
-        streamPrefix: id,
-        logGroup: logGroup,
-      }),
-      environment: props.environment,
-      secrets: isSampleImage ? undefined : props.secrets,
-    });
+    const container = this.taskDefinition.addContainer(
+      props.containerName || "Container",
+      {
+        image: props.imageUrl
+          ? ecs.ContainerImage.fromRegistry(props.imageUrl)
+          : ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
+        logging: ecs.LogDriver.awsLogs({
+          streamPrefix: id,
+          logGroup: logGroup,
+        }),
+        environment: props.environment,
+        secrets: isSampleImage ? undefined : props.secrets,
+      },
+    );
 
     container.addPortMappings({
       containerPort,
@@ -106,19 +108,30 @@ export class EcsService extends Construct {
 
       this.targetGroup = blueTargetGroup;
 
-      new elbv2.ApplicationListenerRule(this, `${id}Rule`, {
-        listener: props.loadBalancer.listener,
-        action: elbv2.ListenerAction.forward([blueTargetGroup]),
-        conditions: [
-          elbv2.ListenerCondition.pathPatterns([
-            props.loadBalancer.pathPattern,
-          ]),
-        ],
-        priority: props.loadBalancer.priority ?? 1,
-      });
+      if (
+        props.loadBalancer.pathPattern &&
+        props.loadBalancer.pathPattern !== "/*"
+      ) {
+        new elbv2.ApplicationListenerRule(this, `${id}Rule`, {
+          listener: props.loadBalancer.listener,
+          action: elbv2.ListenerAction.forward([blueTargetGroup]),
+          conditions: [
+            elbv2.ListenerCondition.pathPatterns([
+              props.loadBalancer.pathPattern,
+            ]),
+          ],
+          priority: props.loadBalancer.priority ?? 1,
+        });
+      } else {
+        new elbv2.ApplicationListenerRule(this, `${id}Rule`, {
+          listener: props.loadBalancer.listener,
+          action: elbv2.ListenerAction.forward([blueTargetGroup]),
+          conditions: [elbv2.ListenerCondition.pathPatterns(["/*"])],
+          priority: props.loadBalancer.priority ?? 999,
+        });
+      }
     }
 
-    // Create the ECS service with load balancer config if using CodeDeploy
     this.service = new ecs.FargateService(this, "Service", {
       cluster: props.cluster,
       taskDefinition: this.taskDefinition,
@@ -140,7 +153,6 @@ export class EcsService extends Construct {
     if (props.enableCodeDeploy && blueTargetGroup && props.loadBalancer) {
       this.service.attachToApplicationTargetGroup(blueTargetGroup);
 
-      // Allow traffic from ALB security group
       if (props.albSecurityGroup) {
         this.service.connections.allowFrom(
           props.albSecurityGroup,
@@ -148,7 +160,6 @@ export class EcsService extends Construct {
           "Allow inbound from ALB",
         );
       } else {
-        // Fallback: allow from anywhere (for testing without ALB SG)
         this.service.connections.allowFrom(
           ec2.Peer.anyIpv4(),
           ec2.Port.tcp(containerPort),
@@ -157,7 +168,6 @@ export class EcsService extends Construct {
       }
     }
 
-    // Setup CodeDeploy deployment group
     if (
       props.loadBalancer &&
       props.enableCodeDeploy &&
@@ -180,7 +190,6 @@ export class EcsService extends Construct {
       });
     }
 
-    // Handle non-CodeDeploy load balancer attachment
     if (props.loadBalancer && !props.enableCodeDeploy) {
       this.targetGroup = new elbv2.ApplicationTargetGroup(this, "TargetGroup", {
         vpc: props.vpc,
@@ -198,16 +207,28 @@ export class EcsService extends Construct {
         targets: [this.service],
       });
 
-      new elbv2.ApplicationListenerRule(this, `${id}Rule`, {
-        listener: props.loadBalancer.listener,
-        action: elbv2.ListenerAction.forward([this.targetGroup]),
-        conditions: [
-          elbv2.ListenerCondition.pathPatterns([
-            props.loadBalancer.pathPattern,
-          ]),
-        ],
-        priority: props.loadBalancer.priority ?? 1,
-      });
+      if (
+        props.loadBalancer.pathPattern &&
+        props.loadBalancer.pathPattern !== "/*"
+      ) {
+        new elbv2.ApplicationListenerRule(this, `${id}Rule`, {
+          listener: props.loadBalancer.listener,
+          action: elbv2.ListenerAction.forward([this.targetGroup]),
+          conditions: [
+            elbv2.ListenerCondition.pathPatterns([
+              props.loadBalancer.pathPattern,
+            ]),
+          ],
+          priority: props.loadBalancer.priority ?? 1,
+        });
+      } else {
+        new elbv2.ApplicationListenerRule(this, `${id}Rule`, {
+          listener: props.loadBalancer.listener,
+          action: elbv2.ListenerAction.forward([this.targetGroup]),
+          conditions: [elbv2.ListenerCondition.pathPatterns(["/*"])],
+          priority: props.loadBalancer.priority ?? 999,
+        });
+      }
     }
   }
 }

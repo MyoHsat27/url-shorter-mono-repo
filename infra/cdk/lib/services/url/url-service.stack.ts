@@ -11,8 +11,7 @@ interface UrlServiceStackProps extends StackProps {
   vpc: ec2.IVpc;
   cluster: ecs.ICluster;
   table: dynamodb.ITable;
-  listenerArn: string;
-  albSecurityGroupId: string;
+  listener: elbv2.IApplicationListener;
   environment?: string;
   redisSecurityGroup: ec2.ISecurityGroup;
   imageUrl?: string;
@@ -25,21 +24,6 @@ export class UrlServiceStack extends Stack {
     const envName = props.environment || "prod";
     const usingSampleImage = !props.imageUrl;
 
-    const listener =
-      elbv2.ApplicationListener.fromApplicationListenerAttributes(
-        this,
-        "ImportedListener",
-        {
-          listenerArn: props.listenerArn,
-          securityGroup: ec2.SecurityGroup.fromSecurityGroupId(
-            this,
-            "AlbSG",
-            props.albSecurityGroupId,
-          ),
-        },
-      );
-
-    // Only load secrets if using real image (not sample)
     const appSecrets = usingSampleImage
       ? undefined
       : secretsmanager.Secret.fromSecretNameV2(
@@ -51,31 +35,24 @@ export class UrlServiceStack extends Stack {
     const service = new EcsService(this, "UrlService", {
       vpc: props.vpc,
       cluster: props.cluster,
-      memory: 512,
-      cpu: 256,
       imageUrl: props.imageUrl,
+      containerName: "url-service",
+      healthPath: "/health",
       loadBalancer: {
-        listener: listener,
+        listener: props.listener,
         pathPattern: "/api/*",
         priority: 10,
       },
       enableCodeDeploy: true,
-      albSecurityGroup: ec2.SecurityGroup.fromSecurityGroupId(
-        this,
-        "AlbSecurityGroup",
-        props.albSecurityGroupId,
-      ),
-      // Only pass environment variables for real image
       environment: usingSampleImage
         ? undefined
         : {
             SERVICE_NAME: "URL Service",
-            PORT: "3500",
+            PORT: "3000",
             NODE_ENV: envName,
             AWS_REGION: this.region,
             DYNAMODB_TABLE_NAME: props.table.tableName,
           },
-      // Only pass secrets for real image
       secrets:
         usingSampleImage || !appSecrets
           ? undefined
@@ -107,7 +84,15 @@ export class UrlServiceStack extends Stack {
             },
     });
 
-    // Grant permissions only if using real image
+    if (service.targetGroup) {
+      new elbv2.ApplicationListenerRule(this, "UrlServiceRedirectRule", {
+        listener: props.listener,
+        action: elbv2.ListenerAction.forward([service.targetGroup]),
+        conditions: [elbv2.ListenerCondition.pathPatterns(["/*"])],
+        priority: 100,
+      });
+    }
+
     if (!usingSampleImage && appSecrets) {
       props.table.grantReadWriteData(service.taskDefinition.taskRole);
       appSecrets.grantRead(service.taskDefinition.taskRole);

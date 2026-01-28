@@ -13,6 +13,7 @@ export class AlbService extends Construct {
   public readonly alb: elbv2.ApplicationLoadBalancer;
   public readonly httpsListener: elbv2.ApplicationListener;
   public readonly httpListener: elbv2.ApplicationListener;
+  public readonly securityGroup: ec2.ISecurityGroup;
 
   constructor(scope: Construct, id: string, props: AlbServiceProps) {
     super(scope, id);
@@ -29,8 +30,9 @@ export class AlbService extends Construct {
       }),
     });
 
+    this.securityGroup = this.alb.connections.securityGroups[0];
+
     if (props.certificate) {
-      // If certificate is provided, redirect HTTP to HTTPS
       this.httpListener.addAction("HttpToHttpsRedirect", {
         action: elbv2.ListenerAction.redirect({
           protocol: "HTTPS",
@@ -48,9 +50,6 @@ export class AlbService extends Construct {
         }),
       });
     } else {
-      // No certificate - HTTP listener is already configured above
-      // Create a dummy HTTPS listener that points to the same HTTP listener
-      // This is needed for compatibility with code that expects httpsListener to exist
       this.httpsListener = this.httpListener;
     }
   }

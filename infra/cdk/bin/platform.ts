@@ -36,9 +36,7 @@ new UrlServiceStack(app, "UrlServiceStack", {
   vpc: network.vpc,
   cluster: network.cluster,
   table: urlData.table,
-  listenerArn: alb.albService.httpListener.listenerArn,
-  albSecurityGroupId:
-    alb.albService.alb.connections.securityGroups[0].securityGroupId,
+  listener: alb.albService.httpListener,
   redisSecurityGroup: urlData.redis.securityGroup,
   env,
 });

@@ -12,7 +12,7 @@ export class UrlController {
     private readonly redirectService: RedirectService,
   ) {}
 
-  @Post()
+  @Post("/api")
   async create(@Body() dto: CreateUrlDto) {
     return this.urlService.createShortUrl(dto);
   }
