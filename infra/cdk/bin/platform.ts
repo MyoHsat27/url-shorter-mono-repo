@@ -32,20 +32,24 @@ const urlData = new UrlDataStack(app, "UrlDataStack", {
   env,
 });
 
+const urlImage = app.node.tryGetContext("urlImage");
 new UrlServiceStack(app, "UrlServiceStack", {
   vpc: network.vpc,
   cluster: network.cluster,
   table: urlData.table,
   listener: alb.albService.httpListener,
   redisSecurityGroup: urlData.redis.securityGroup,
+  imageUrl: urlImage,
   env,
 });
 
 // Services: Web
+const webImage = app.node.tryGetContext("webImage");
 new WebStack(app, "WebStack", {
   vpc: network.vpc,
   cluster: network.cluster,
   listener: alb.albService.httpListener,
+  imageUrl: webImage,
   env,
 });
 
