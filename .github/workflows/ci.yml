@@ -4,11 +4,42 @@ on:
   push:
     branches:
       - main
+      - staging
+      - development
+      - feat/**
+      - fix/**
   pull_request:
     branches:
-      - main
+      - "main"
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
+  detect-changes:
+    name: Detect Changed Services
+    runs-on: ubuntu-latest
+    outputs:
+      url_service: ${{ steps.filter.outputs.url_service }}
+      web_service: ${{ steps.filter.outputs.web_service }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            url_service:
+              - "apps/url-service/**"
+              - "packages/**"
+              - ".github/workflows/ci.yml"
+            web_service:
+              - "apps/web/**"
+              - "packages/**"
+              - ".github/workflows/ci.yml"
+
   lint:
     name: Lint & Format
     runs-on: ubuntu-latest
@@ -35,9 +66,11 @@ jobs:
       - name: Run prettier check
         run: pnpm format:check
 
-  test:
-    name: Test
+  test-url-service:
+    name: Test URL Service
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.url_service == 'true'
 
     steps:
       - name: Checkout repo
@@ -66,4 +99,29 @@ jobs:
 
       - name: Run tests with coverage
         run: pnpm --filter @apps/url-service test:cov
+
+  test-web-service:
+    name: Test Web Service
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.web_service == 'true'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Web Service
+        run: pnpm --filter @apps/web build
 
