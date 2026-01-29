@@ -9,7 +9,8 @@ FROM base AS builder
 WORKDIR /app
 COPY . .
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
-RUN pnpm --filter url-service build
+RUN pnpm build:nestjs-common
+RUN pnpm build:url-service
 RUN pnpm --filter url-service deploy --prod /prod/url-service
 
 # Runtime Image

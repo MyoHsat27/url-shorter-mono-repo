@@ -5,7 +5,7 @@ services:
     container_name: url-service
     build:
       context: .
-      dockerfile: apps/url-service/Dockerfile
+      dockerfile: apps/url-service/Dockerfile.prod
     ports:
       - "3100:3000"
     env_file:
@@ -20,7 +20,7 @@ services:
     container_name: web
     build:
       context: .
-      dockerfile: apps/web/Dockerfile
+      dockerfile: apps/web/Dockerfile.prod
     ports:
       - "3000:3000"
     env_file:
