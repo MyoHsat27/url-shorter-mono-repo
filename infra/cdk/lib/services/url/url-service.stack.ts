@@ -37,6 +37,7 @@ export class UrlServiceStack extends Stack {
       cluster: props.cluster,
       imageUrl: props.imageUrl,
       containerName: "url-service",
+      containerPort: 3100,
       healthPath: "/health",
       loadBalancer: {
         listener: props.listener,
@@ -48,10 +49,11 @@ export class UrlServiceStack extends Stack {
         ? undefined
         : {
             SERVICE_NAME: "URL Service",
-            PORT: "3000",
+            PORT: "3100",
             NODE_ENV: envName,
             AWS_REGION: this.region,
             DYNAMODB_TABLE_NAME: props.table.tableName,
+            DYNAMODB_ENDPOINT: `https://dynamodb.us-east-1.amazonaws.com`,
           },
       secrets:
         usingSampleImage || !appSecrets
