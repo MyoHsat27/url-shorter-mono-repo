@@ -28,10 +28,14 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
+      - name: Resolve HEAD^ to SHA
+        id: parent_sha
+        run: echo "parent_sha=$(git rev-parse HEAD^)" >> $GITHUB_OUTPUT
+
       - uses: dorny/paths-filter@v3
         id: filter
         with:
-          base: HEAD^
+          base: ${{ steps.parent_sha.outputs.parent_sha }}
           ref: HEAD
           filters: |
             deploy:
