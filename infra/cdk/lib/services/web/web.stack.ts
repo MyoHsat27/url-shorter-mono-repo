@@ -19,9 +19,10 @@ export class WebStack extends Stack {
     new EcsService(this, "WebService", {
       vpc: props.vpc,
       cluster: props.cluster,
+      serviceName: "WebStack-WebServiceService",
       imageUrl: props.imageUrl,
       containerName: "web-service",
-      healthPath: "/",
+      healthPath: "/web",
       loadBalancer: {
         listener: props.listener,
         pathPattern: "/web/*",

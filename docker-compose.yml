@@ -3,9 +3,10 @@ version: "3.9"
 services:
   url-service:
     container_name: url-service
-    build:
-      context: .
-      dockerfile: apps/url-service/Dockerfile.prod
+    image: myohast/url-service:latest
+    # build:
+    # context: .
+    # dockerfile: apps/url-service/Dockerfile.prod
     ports:
       - "3100:3000"
     env_file:
@@ -18,11 +19,12 @@ services:
 
   web:
     container_name: web
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile.prod
+    image: myohast/web-service:latest
+    # build:
+    #   context: .
+    #   dockerfile: apps/web/Dockerfile.prod
     ports:
-      - "3000:3000"
+      - "3200:3000"
     env_file:
       - .env
     networks:

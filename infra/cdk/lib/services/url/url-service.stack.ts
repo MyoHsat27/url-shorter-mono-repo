@@ -35,6 +35,7 @@ export class UrlServiceStack extends Stack {
     const service = new EcsService(this, "UrlService", {
       vpc: props.vpc,
       cluster: props.cluster,
+      serviceName: "UrlServiceStack-UrlServiceService",
       imageUrl: props.imageUrl,
       containerName: "url-service",
       containerPort: 3100,

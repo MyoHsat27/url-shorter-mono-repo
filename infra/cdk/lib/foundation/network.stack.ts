@@ -21,6 +21,7 @@ export class NetworkStack extends Stack {
 
     this.cluster = new ecs.Cluster(this, "SharedCluster", {
       vpc: this.vpc,
+      clusterName: "NetworkStack-EcsCluster",
     });
   }
 }
