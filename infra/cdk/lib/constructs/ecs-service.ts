@@ -15,6 +15,7 @@ export interface EcsServiceProps {
   containerName?: string;
   containerPort?: number;
   healthPath?: string;
+  serviceName?: string;
   loadBalancer?: {
     listener: elbv2.IApplicationListener;
     pathPattern: string;
@@ -133,6 +134,7 @@ export class EcsService extends Construct {
     }
 
     this.service = new ecs.FargateService(this, "Service", {
+      serviceName: props.serviceName,
       cluster: props.cluster,
       taskDefinition: this.taskDefinition,
       deploymentController: props.enableCodeDeploy
