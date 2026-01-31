@@ -187,8 +187,13 @@ export class EcsService extends Construct {
           blueTargetGroup,
           greenTargetGroup,
           listener: props.loadBalancer.listener,
+          terminationWaitTime: Duration.minutes(5),
         },
         deploymentConfig: codedeploy.EcsDeploymentConfig.ALL_AT_ONCE,
+        autoRollback: {
+          failedDeployment: true,
+          stoppedDeployment: true,
+        },
       });
     }
 
