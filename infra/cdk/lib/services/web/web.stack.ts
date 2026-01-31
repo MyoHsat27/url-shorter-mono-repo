@@ -26,7 +26,7 @@ export class WebStack extends Stack {
       loadBalancer: {
         listener: props.listener,
         pathPattern: "/web/*",
-        priority: 20,
+        priority: 10,
       },
       enableCodeDeploy: true,
     });

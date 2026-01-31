@@ -43,7 +43,7 @@ export class UrlServiceStack extends Stack {
       loadBalancer: {
         listener: props.listener,
         pathPattern: "/api/*",
-        priority: 10,
+        priority: 20,
       },
       enableCodeDeploy: true,
       environment: usingSampleImage
