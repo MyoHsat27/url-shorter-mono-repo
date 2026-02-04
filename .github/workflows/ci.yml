@@ -97,9 +97,6 @@ jobs:
       - name: Run tests
         run: pnpm --filter @apps/url-service test
 
-      - name: Run tests with coverage
-        run: pnpm --filter @apps/url-service test:cov
-
   test-web-service:
     name: Test Web Service
     runs-on: ubuntu-latest
