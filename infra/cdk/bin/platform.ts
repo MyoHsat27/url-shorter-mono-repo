@@ -8,6 +8,8 @@ import { AlbStack } from "../lib/foundation/alb.stack";
 import { UrlDataStack } from "../lib/services/url/url-data.stack";
 import { UrlServiceStack } from "../lib/services/url/url-service.stack";
 import { WebStack } from "../lib/services/web/web.stack";
+import { AnalyticsDataStack } from "../lib/services/analytics/analytics-data.stack";
+import { AnalyticsServiceStack } from "../lib/services/analytics/analytics-service.stack";
 
 const app = new cdk.App();
 const env = {
@@ -26,6 +28,21 @@ const alb = new AlbStack(app, "AlbStack", {
   env,
 });
 
+// Services: Analytics
+const analyticsData = new AnalyticsDataStack(app, "AnalyticsDataStack", {
+  env,
+});
+
+const analyticsImage = app.node.tryGetContext("analyticsImage");
+new AnalyticsServiceStack(app, "AnalyticsServiceStack", {
+  vpc: network.vpc,
+  cluster: network.cluster,
+  clickEventsQueue: analyticsData.clickEventsQueue.queue,
+  clicksTable: analyticsData.clicksTable,
+  imageUrl: analyticsImage,
+  env,
+});
+
 // Services: URL
 const urlData = new UrlDataStack(app, "UrlDataStack", {
   vpc: network.vpc,
@@ -39,6 +56,7 @@ new UrlServiceStack(app, "UrlServiceStack", {
   table: urlData.table,
   listener: alb.albService.httpListener,
   redisSecurityGroup: urlData.redis.securityGroup,
+  clickEventsQueue: analyticsData.clickEventsQueue.queue,
   imageUrl: urlImage,
   env,
 });

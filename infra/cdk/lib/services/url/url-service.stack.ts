@@ -5,6 +5,7 @@ import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as sqs from "aws-cdk-lib/aws-sqs";
 import { EcsService } from "../../constructs/ecs-service";
 
 interface UrlServiceStackProps extends StackProps {
@@ -14,6 +15,7 @@ interface UrlServiceStackProps extends StackProps {
   listener: elbv2.IApplicationListener;
   environment?: string;
   redisSecurityGroup: ec2.ISecurityGroup;
+  clickEventsQueue?: sqs.IQueue;
   imageUrl?: string;
 }
 
@@ -55,6 +57,7 @@ export class UrlServiceStack extends Stack {
             AWS_REGION: this.region,
             DYNAMODB_TABLE_NAME: props.table.tableName,
             DYNAMODB_ENDPOINT: `https://dynamodb.us-east-1.amazonaws.com`,
+            SQS_QUEUE_URL: props.clickEventsQueue?.queueUrl || "",
           },
       secrets:
         usingSampleImage || !appSecrets
@@ -99,6 +102,12 @@ export class UrlServiceStack extends Stack {
     if (!usingSampleImage && appSecrets) {
       props.table.grantReadWriteData(service.taskDefinition.taskRole);
       appSecrets.grantRead(service.taskDefinition.taskRole);
+
+      if (props.clickEventsQueue) {
+        props.clickEventsQueue.grantSendMessages(
+          service.taskDefinition.taskRole,
+        );
+      }
     }
 
     new ec2.CfnSecurityGroupIngress(this, "RedisIngress", {

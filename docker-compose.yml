@@ -1,43 +1,107 @@
-version: "3.9"
-
 services:
   url-service:
     container_name: url-service
-    image: myohast/url-service:latest
-    # build:
-    # context: .
-    # dockerfile: apps/url-service/Dockerfile.prod
+    build:
+      context: .
+      dockerfile: apps/url-service/Dockerfile
     ports:
-      - "3100:3000"
+      - "3100:3100"
     env_file:
-      - .env
+      - ./apps/url-service/.env
     depends_on:
-      - dynamodb
-      - redis
+      localstack:
+        condition: service_healthy
+    networks:
+      - url-network
+
+  analytics-service:
+    container_name: analytics-service
+    build:
+      context: .
+      dockerfile: apps/analytics-service/Dockerfile
+    ports:
+      - "3200:3000"
+    env_file:
+      - ./apps/analytics-service/.env
+    depends_on:
+      localstack:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
     networks:
       - url-network
 
   web:
     container_name: web
-    image: myohast/web-service:latest
-    # build:
-    #   context: .
-    #   dockerfile: apps/web/Dockerfile.prod
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
     ports:
-      - "3200:3000"
+      - "3000:3000"
     env_file:
-      - .env
+      - ./apps/web/.env
     networks:
       - url-network
 
-  dynamodb:
-    container_name: dynamodb-local
-    image: amazon/dynamodb-local
-    command: "-jar DynamoDBLocal.jar -sharedDb"
+  localstack:
+    container_name: localstack
+    image: localstack/localstack:latest
     ports:
-      - "8000:8000"
+      - "4566:4566"
+      - "4510-4559:4510-4559"
+    environment:
+      SERVICES: dynamodb,sqs,secretsmanager
+      DEBUG: 1
+      DATA_DIR: /var/lib/localstack/data
+      DEFAULT_REGION: us-east-1
+      PERSISTENCE: 1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - url-network
     volumes:
-      - dynamodb-data:/home/dynamodblocal/data
+      - ./scripts/local-stack-init.sh:/etc/localstack/init/ready.d/init.sh
+      - localstack-data:/var/lib/localstack
+
+  timescaledb:
+    container_name: timescaledb
+    image: timescale/timescaledb-ha:pg16
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: analytics
+      POSTGRES_PASSWORD: analytics
+      POSTGRES_DB: analytics
+    volumes:
+      - timescaledb-data:/home/postgres/pgdata/data
+      - ./scripts/timescaledb-init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - url-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U analytics -d analytics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    container_name: ollama
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - url-network
+
+  redis:
+    container_name: redis-local
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
     networks:
       - url-network
 
@@ -52,17 +116,10 @@ services:
     depends_on:
       - redis
 
-  redis:
-    container_name: redis-local
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    networks:
-      - url-network
-
 volumes:
-  dynamodb-data:
+  localstack-data:
+  timescaledb-data:
+  ollama-data:
 
 networks:
   url-network:
