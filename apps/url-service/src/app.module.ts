@@ -5,7 +5,7 @@ import { AppService } from "./app.service";
 import { UrlModule } from "./modules/url/url.module";
 import { AppConfigModule } from "./config/config.module";
 import { CoreModule } from "@url-shortner/nestjs-common";
-import { DynamoDBModule, RedisModule } from "./infrastructure";
+import { DynamoDBModule, RedisModule, SqsModule } from "./infrastructure";
 
 @Module({
   imports: [
@@ -25,6 +25,7 @@ import { DynamoDBModule, RedisModule } from "./infrastructure";
     // Infrastructure modules
     DynamoDBModule,
     RedisModule,
+    SqsModule,
 
     // Feature modules
     UrlModule,

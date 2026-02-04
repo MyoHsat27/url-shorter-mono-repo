@@ -1,5 +1,7 @@
 import { Global, Module } from "@nestjs/common";
-import { dynamoDbProvider } from "./dynamodb.provider";
+import { dynamoDbProvider, DYNAMODB_DOCUMENT } from "./dynamodb.provider";
+
+export { DYNAMODB_DOCUMENT };
 
 @Global()
 @Module({

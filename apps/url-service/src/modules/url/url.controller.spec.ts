@@ -5,7 +5,8 @@ import { UrlService } from "./services/url.service";
 import { RedirectService } from "./services/redirect.service";
 import { NotFoundException } from "@url-shortner/nestjs-common";
 import { CreateUrlDto } from "./dto";
-import { Response } from "express";
+import { ClickEventPublisher } from "./services/click-event.publisher";
+import { Request, Response } from "express";
 
 describe("UrlController", () => {
   let controller: UrlController;
@@ -22,6 +23,10 @@ describe("UrlController", () => {
       resolve: jest.fn(),
     };
 
+    const mockClickEventPublisher = {
+      publish: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [UrlController],
       providers: [
@@ -32,6 +37,10 @@ describe("UrlController", () => {
         {
           provide: RedirectService,
           useValue: mockRedirectService,
+        },
+        {
+          provide: ClickEventPublisher,
+          useValue: mockClickEventPublisher,
         },
       ],
     }).compile();
@@ -102,6 +111,14 @@ describe("UrlController", () => {
   });
 
   describe("redirect", () => {
+    const mockRequest = {
+      headers: {
+        "user-agent": "TestAgent",
+        referer: "http://example.com",
+      },
+      ip: "127.0.0.1",
+    } as unknown as Request;
+
     it("should redirect to long URL for valid short code", async () => {
       // Arrange
       const shortCode = "abc123d";
@@ -115,7 +132,7 @@ describe("UrlController", () => {
       redirectService.resolve.mockResolvedValue({ longUrl });
 
       // Act
-      await controller.redirect(shortCode, mockResponse);
+      await controller.redirect(shortCode, mockRequest, mockResponse);
 
       // Assert
       expect(redirectService.resolve).toHaveBeenCalledWith(shortCode);
@@ -135,7 +152,7 @@ describe("UrlController", () => {
 
       // Act & Assert
       await expect(
-        controller.redirect(shortCode, mockResponse),
+        controller.redirect(shortCode, mockRequest, mockResponse),
       ).rejects.toThrow(NotFoundException);
       expect(mockResponse.redirect).not.toHaveBeenCalled();
     });
@@ -155,7 +172,7 @@ describe("UrlController", () => {
       });
 
       // Act
-      await controller.redirect(shortCode, mockResponse);
+      await controller.redirect(shortCode, mockRequest, mockResponse);
 
       // Assert
       expect(mockResponse.status).toHaveBeenCalledWith(410);
@@ -175,7 +192,7 @@ describe("UrlController", () => {
 
       // Act & Assert
       await expect(
-        controller.redirect(shortCode, mockResponse),
+        controller.redirect(shortCode, mockRequest, mockResponse),
       ).rejects.toThrow("Service error");
       expect(mockResponse.redirect).not.toHaveBeenCalled();
     });
@@ -193,7 +210,7 @@ describe("UrlController", () => {
       redirectService.resolve.mockResolvedValue({ longUrl });
 
       // Act
-      await controller.redirect(shortCode, mockResponse);
+      await controller.redirect(shortCode, mockRequest, mockResponse);
 
       // Assert
       expect(redirectService.resolve).toHaveBeenCalledWith(shortCode);

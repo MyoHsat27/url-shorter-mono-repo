@@ -46,6 +46,24 @@ export default [
     },
   })),
 
+  // Analytics Service (Nest.js)
+  ...tseslint.configs.recommendedTypeChecked.map((c) => ({
+    ...c,
+    files: ["apps/analytics-service/**/*.ts"],
+    languageOptions: {
+      ...c.languageOptions,
+      globals: {
+        ...globals.node,
+        ...globals.jest,
+      },
+      parserOptions: {
+        ...c.languageOptions?.parserOptions,
+        project: ["apps/analytics-service/tsconfig.json"],
+        tsconfigRootDir: __dirname,
+      },
+    },
+  })),
+
   // WEB (Next.js)
   ...tseslint.configs.recommendedTypeChecked.map((c) => ({
     ...c,

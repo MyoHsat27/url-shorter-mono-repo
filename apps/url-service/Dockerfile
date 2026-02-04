@@ -6,7 +6,7 @@ RUN corepack enable
 WORKDIR /app
 
 # Copy monorepo files first
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 
 # Copy service & packages source 
 COPY apps/url-service/package.json apps/url-service/package.json

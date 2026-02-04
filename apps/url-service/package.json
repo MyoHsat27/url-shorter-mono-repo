@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.971.0",
+    "@aws-sdk/client-sqs": "^3.980.0",
     "@aws-sdk/lib-dynamodb": "^3.971.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
@@ -26,7 +27,6 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/swagger": "^11.2.5",
     "@url-shortner/nestjs-common": "workspace:*",
-    "@url-shortner/shared": "workspace:*",
     "aws-sdk": "^2.1693.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.3",
