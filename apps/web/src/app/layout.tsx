@@ -28,6 +28,7 @@ export const metadata: Metadata = {
 
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
+import { ChatInterface } from "@/components/chat-interface";
 
 export default function RootLayout({
   children,
@@ -44,6 +45,7 @@ export default function RootLayout({
             <Header />
             <main className="flex flex-1 flex-col">{children}</main>
             <Footer />
+            <ChatInterface />
           </div>
         </ThemeProvider>
       </body>

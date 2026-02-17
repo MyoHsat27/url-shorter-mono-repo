@@ -16,10 +16,11 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: false });
 
   const config = new DocumentBuilder()
-    .setTitle("Url Shortner")
-    .setDescription("Url Shortner API")
+    .setTitle("Url Shortner | Analytics Service")
+    .setDescription("Url Shortner | Analytics Service API")
     .setVersion("1.0")
     .addTag("url")
+    .addTag("analytics")
     .build();
   const documentFactory = () => SwaggerModule.createDocument(app, config);
   SwaggerModule.setup("api-docs", app, documentFactory);

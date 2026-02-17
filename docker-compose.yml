@@ -88,7 +88,8 @@ services:
 
   ollama:
     container_name: ollama
-    image: ollama/ollama:latest
+    build:
+      context: infra/ollama
     ports:
       - "11434:11434"
     volumes:

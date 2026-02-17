@@ -75,7 +75,7 @@ export class RagService {
     try {
       response = await this.ollamaService.generate(prompt);
     } catch (error) {
-      this.logger.error("LLM generation failed, using fallback");
+      this.logger.error("LLM generation failed, using fallback", error);
       response = this.generateFallbackResponse(relevantFacts);
     }
 
@@ -154,6 +154,61 @@ Response:`;
         this.logger.error("Failed to save session to Redis");
       }
     }
+  }
+
+  async *chatStream(
+    sessionId: string,
+    userMessage: string,
+  ): AsyncGenerator<{ type: "chunk" | "facts"; data: string | StoredFact[] }> {
+    const session = await this.getSession(sessionId);
+    session.messages.push({
+      role: "user",
+      content: userMessage,
+      timestamp: Date.now(),
+    });
+
+    let relevantFacts: StoredFact[] = [];
+    try {
+      const queryEmbedding = await this.ollamaService.getEmbedding(userMessage);
+      relevantFacts = await this.factsRepository.searchSimilar(
+        queryEmbedding,
+        5,
+      );
+    } catch (error) {
+      this.logger.warn("Could not get embeddings, using recent facts");
+      relevantFacts = await this.factsRepository.getRecentFacts(5);
+    }
+
+    yield { type: "facts", data: relevantFacts };
+
+    const factsContext = relevantFacts.map((f) => `- ${f.factText}`).join("\n");
+    const historyContext = session.messages
+      .slice(-6)
+      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+      .join("\n");
+
+    const prompt = this.buildPrompt(userMessage, factsContext, historyContext);
+
+    let fullResponse = "";
+    try {
+      // Stream the response
+      for await (const chunk of this.ollamaService.generateStream(prompt)) {
+        fullResponse += chunk;
+        yield { type: "chunk", data: chunk };
+      }
+    } catch (error) {
+      this.logger.error("LLM streaming failed, using fallback", error);
+      const fallback = this.generateFallbackResponse(relevantFacts);
+      fullResponse = fallback;
+      yield { type: "chunk", data: fallback };
+    }
+
+    session.messages.push({
+      role: "assistant",
+      content: fullResponse,
+      timestamp: Date.now(),
+    });
+    await this.saveSession(session);
   }
 
   async clearSession(sessionId: string): Promise<void> {

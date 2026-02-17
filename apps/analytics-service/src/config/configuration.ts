@@ -26,8 +26,9 @@ const configuration = () => ({
     database: process.env.TIMESCALE_DATABASE || "analytics",
   },
   ollama: {
-    host: process.env.OLLAMA_HOST || "http://localhost:11434",
+    host: process.env.OLLAMA_HOST || "http://127.0.0.1:11434",
     embeddingModel: process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text",
+    generateModel: process.env.OLLAMA_GENERATE_MODEL || "llama3.2",
   },
 });
 
