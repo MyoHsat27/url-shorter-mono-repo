@@ -38,6 +38,7 @@ export class UrlController {
     this.clickEventPublisher
       .publish({
         shortCode,
+        longUrl: result.longUrl,
         timestamp: new Date().toISOString(),
         userAgent: req.headers["user-agent"],
         ipAddress:

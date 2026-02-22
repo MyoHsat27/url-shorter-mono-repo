@@ -27,7 +27,7 @@ export class FactsRepository {
     factType?: string,
   ): Promise<StoredFact[]> {
     let query = `
-      SELECT 
+      SELECT
         id,
         fact_text,
         fact_type,
@@ -37,6 +37,7 @@ export class FactsRepository {
         1 - (embedding <=> $1::vector) as similarity
       FROM analytics_facts
       WHERE embedding IS NOT NULL
+        AND created_at > NOW() - INTERVAL '2 hours'
     `;
     const params: (string | number)[] = [`[${queryEmbedding.join(",")}]`];
     let paramIndex = 2;

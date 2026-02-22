@@ -11,6 +11,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS click_events (
     time        TIMESTAMPTZ NOT NULL,
     short_code  TEXT NOT NULL,
+    long_url    TEXT,
     user_agent  TEXT,
     ip_address  INET,
     country     TEXT,

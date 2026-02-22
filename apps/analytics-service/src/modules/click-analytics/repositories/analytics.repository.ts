@@ -13,6 +13,7 @@ export interface HourlyStats {
 
 export interface TopLink {
   shortCode: string;
+  longUrl: string | null;
   clicks: number;
   uniqueVisitors: number;
 }
@@ -85,21 +86,37 @@ export class AnalyticsRepository {
     startTime?: Date,
     endTime?: Date,
   ): Promise<TopLink[]> {
-    const query = `
-      SELECT 
-        short_code,
-        SUM(clicks) as clicks,
-        SUM(unique_visitors) as unique_visitors
-      FROM hourly_stats
-      GROUP BY short_code 
-      ORDER BY clicks DESC 
-      LIMIT ${limit}
+    let query = `
+      SELECT
+        ce.short_code,
+        COUNT(*) as clicks,
+        COUNT(DISTINCT ce.ip_address) as unique_visitors,
+        (SELECT ce2.long_url FROM click_events ce2
+         WHERE ce2.short_code = ce.short_code AND ce2.long_url IS NOT NULL
+         ORDER BY ce2.time DESC LIMIT 1) as long_url
+      FROM click_events ce
+      WHERE 1=1
     `;
+    const params: (string | number)[] = [];
+    let paramIndex = 1;
 
-    const result = await this.pool.query(query);
+    if (startTime) {
+      query += ` AND ce.time >= $${paramIndex++}`;
+      params.push(startTime.toISOString());
+    }
+    if (endTime) {
+      query += ` AND ce.time <= $${paramIndex++}`;
+      params.push(endTime.toISOString());
+    }
+
+    query += ` GROUP BY ce.short_code ORDER BY clicks DESC LIMIT $${paramIndex}`;
+    params.push(limit);
+
+    const result = await this.pool.query(query, params);
 
     return result.rows.map((row) => ({
       shortCode: row.short_code,
+      longUrl: row.long_url || null,
       clicks: parseInt(row.clicks, 10),
       uniqueVisitors: parseInt(row.unique_visitors, 10),
     }));

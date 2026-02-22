@@ -22,7 +22,7 @@ export class ClickAnalyticsService {
 
   async recordClick(event: ClickEvent): Promise<void> {
     // Lookup geolocation from IP
-    const geo = this.lookupGeoLocation("8.8.8.8");
+    const geo = this.lookupGeoLocation(event.ipAddress);
     const deviceType = this.detectDeviceType(event.userAgent);
 
     this.logger.debug(`${JSON.stringify(event)}`);
@@ -42,13 +42,14 @@ export class ClickAnalyticsService {
 
     try {
       const query = `
-        INSERT INTO click_events (time, short_code, user_agent, ip_address, country, city, referer, device_type)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO click_events (time, short_code, long_url, user_agent, ip_address, country, city, referer, device_type)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       `;
 
       await this.pool.query(query, [
         new Date(event.timestamp),
         event.shortCode,
+        event.longUrl || null,
         event.userAgent,
         event.ipAddress,
         geo.country,

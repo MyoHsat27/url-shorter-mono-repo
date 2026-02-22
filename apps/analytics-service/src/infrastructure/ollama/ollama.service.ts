@@ -60,6 +60,9 @@ export class OllamaService implements OnModuleInit {
   }
 
   async getEmbedding(text: string): Promise<number[]> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
     try {
       const response = await fetch(`${this.host}/api/embeddings`, {
         method: "POST",
@@ -68,6 +71,7 @@ export class OllamaService implements OnModuleInit {
           model: this.embeddingModel,
           prompt: text,
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -78,15 +82,24 @@ export class OllamaService implements OnModuleInit {
       const data = (await response.json()) as EmbeddingResponse;
       return data.embedding;
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        this.logger.error("Embedding request timed out after 15s");
+        throw new Error("Embedding request timed out");
+      }
       this.logger.error(
         `Failed to get embedding: ${error instanceof Error ? error.message : "Unknown"}`,
       );
       throw error;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
   async generate(prompt: string, model?: string): Promise<string> {
     const modelToUse = model || this.generateModel;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60000);
+
     try {
       const response = await fetch(`${this.host}/api/generate`, {
         method: "POST",
@@ -96,6 +109,7 @@ export class OllamaService implements OnModuleInit {
           prompt,
           stream: false,
         }),
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -106,20 +120,35 @@ export class OllamaService implements OnModuleInit {
       const data = (await response.json()) as GenerateResponse;
       return data.response;
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        this.logger.error("Generate request timed out after 60s");
+        throw new Error("Generate request timed out");
+      }
       this.logger.error(
         `Failed to generate: ${error instanceof Error ? error.message : "Unknown"}`,
       );
       throw error;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
   async isAvailable(): Promise<boolean> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
     try {
-      const response = await fetch(`${this.host}/api/tags`);
+      const response = await fetch(`${this.host}/api/tags`, {
+        signal: controller.signal,
+      });
       return response.ok;
     } catch (e) {
-      this.logger.warn(`Ollama check failed: ${e instanceof Error ? e.message : "Unknown error"}`);
+      this.logger.warn(
+        `Ollama check failed: ${e instanceof Error ? e.message : "Unknown error"}`,
+      );
       return false;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
@@ -144,7 +173,10 @@ export class OllamaService implements OnModuleInit {
       throw error;
     }
   }
-  async *generateStream(prompt: string, model?: string): AsyncGenerator<string> {
+  async *generateStream(
+    prompt: string,
+    model?: string,
+  ): AsyncGenerator<string> {
     const modelToUse = model || this.generateModel;
     try {
       const response = await fetch(`${this.host}/api/generate`, {
@@ -176,7 +208,7 @@ export class OllamaService implements OnModuleInit {
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
-        
+
         // Keep the last part in the buffer as it might be incomplete
         buffer = lines.pop() || "";
 
@@ -193,7 +225,7 @@ export class OllamaService implements OnModuleInit {
           }
         }
       }
-      
+
       // Process remaining buffer if any
       if (buffer.trim()) {
         try {

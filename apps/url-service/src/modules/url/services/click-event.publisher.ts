@@ -5,6 +5,7 @@ import { SQS_CLIENT } from "src/infrastructure";
 
 export interface ClickEvent {
   shortCode: string;
+  longUrl?: string;
   timestamp: string;
   userAgent?: string;
   ipAddress?: string;

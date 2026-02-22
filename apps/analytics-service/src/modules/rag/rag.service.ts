@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import { OllamaService } from "src/infrastructure";
 import {
@@ -50,20 +48,9 @@ export class RagService {
       timestamp: Date.now(),
     });
 
-    let relevantFacts: StoredFact[] = [];
-    try {
-      const queryEmbedding = await this.ollamaService.getEmbedding(userMessage);
-      relevantFacts = await this.factsRepository.searchSimilar(
-        queryEmbedding,
-        5,
-      );
-    } catch (error) {
-      this.logger.warn("Could not get embeddings, using recent facts");
-      relevantFacts = await this.factsRepository.getRecentFacts(5);
-    }
+    const relevantFacts = await this.retrieveFacts(userMessage);
 
-    const factsContext = relevantFacts.map((f) => `- ${f.factText}`).join("\n");
-
+    const factsContext = this.buildFactsContext(relevantFacts);
     const historyContext = session.messages
       .slice(-6)
       .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
@@ -89,12 +76,119 @@ export class RagService {
     return { response, facts: relevantFacts };
   }
 
+  async *chatStream(
+    sessionId: string,
+    userMessage: string,
+  ): AsyncGenerator<{ type: "chunk" | "facts"; data: string | StoredFact[] }> {
+    const session = await this.getSession(sessionId);
+    session.messages.push({
+      role: "user",
+      content: userMessage,
+      timestamp: Date.now(),
+    });
+
+    const relevantFacts = await this.retrieveFacts(userMessage);
+
+    yield { type: "facts", data: relevantFacts };
+
+    const factsContext = this.buildFactsContext(relevantFacts);
+    const historyContext = session.messages
+      .slice(-6)
+      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+      .join("\n");
+
+    const prompt = this.buildPrompt(userMessage, factsContext, historyContext);
+
+    let fullResponse = "";
+    try {
+      for await (const chunk of this.ollamaService.generateStream(prompt)) {
+        fullResponse += chunk;
+        yield { type: "chunk", data: chunk };
+      }
+    } catch (error) {
+      this.logger.error("LLM streaming failed, using fallback", error);
+      const fallback = this.generateFallbackResponse(relevantFacts);
+      fullResponse = fallback;
+      yield { type: "chunk", data: fallback };
+    }
+
+    session.messages.push({
+      role: "assistant",
+      content: fullResponse,
+      timestamp: Date.now(),
+    });
+    await this.saveSession(session);
+  }
+
+  private async retrieveFacts(userMessage: string): Promise<StoredFact[]> {
+    let relevantFacts: StoredFact[] = [];
+
+    try {
+      const queryEmbedding = await this.ollamaService.getEmbedding(userMessage);
+      relevantFacts = await this.factsRepository.searchSimilar(
+        queryEmbedding,
+        5,
+      );
+    } catch {
+      this.logger.warn("Could not get embeddings, using recent facts");
+    }
+
+    // Always supplement with recent facts to ensure freshness
+    const recentFacts = await this.factsRepository.getRecentFacts(10);
+
+    // keep embedding-matched facts first, then add recent facts not already included
+    const seenIds = new Set(relevantFacts.map((f) => f.id));
+    for (const fact of recentFacts) {
+      if (!seenIds.has(fact.id)) {
+        relevantFacts.push(fact);
+        seenIds.add(fact.id);
+      }
+      if (relevantFacts.length >= 10) break;
+    }
+
+    // If we still have no embedding-matched facts, use only recent
+    if (relevantFacts.length === 0) {
+      relevantFacts = recentFacts.slice(0, 10);
+    }
+
+    return relevantFacts;
+  }
+
+  private buildFactsContext(facts: StoredFact[]): string {
+    if (facts.length === 0) return "";
+
+    // Group facts by type for better context
+    const grouped: Record<string, StoredFact[]> = {};
+    for (const fact of facts) {
+      const type = fact.factType;
+      if (!grouped[type]) grouped[type] = [];
+      grouped[type].push(fact);
+    }
+
+    const sections: string[] = [];
+    const typeLabels: Record<string, string> = {
+      trending: "Trending Links",
+      traffic_pattern: "Traffic Patterns",
+      location: "Geographic Data",
+      summary: "Summary",
+    };
+
+    for (const [type, typeFacts] of Object.entries(grouped)) {
+      const label = typeLabels[type] || type;
+      sections.push(
+        `### ${label}\n${typeFacts.map((f) => `- ${f.factText}`).join("\n")}`,
+      );
+    }
+
+    return sections.join("\n\n");
+  }
+
   private buildPrompt(
     userMessage: string,
     factsContext: string,
     historyContext: string,
   ): string {
-    return `You are an analytics assistant for a URL shortener service. Answer questions about link performance, traffic patterns, and trends based on the provided data.
+    return `You are an analytics assistant for a URL shortener service. You help users understand their link performance, traffic patterns, geographic distribution, and trends.
 
 ## Available Analytics Data:
 ${factsContext || "No recent analytics data available."}
@@ -106,21 +200,38 @@ ${historyContext || "This is the start of the conversation."}
 ${userMessage}
 
 ## Instructions:
-- Answer based on the analytics data provided
-- Be specific with numbers when available
-- If data is not available, say so clearly
-- Keep responses concise but informative
-- Use bullet points for multiple insights
+- Answer based ONLY on the analytics data provided above. Do not make up data.
+- When mentioning links, always include both the short code and the actual URL if available.
+- Be specific with numbers, percentages, and time periods when available.
+- If the data doesn't contain information to answer the question, say so clearly and suggest what data might help.
+- Keep responses concise but informative. Use bullet points for multiple insights.
+- When discussing trends, reference the time period the data covers.
+- If asked about "popular" or "trending" links, use the trending data.
+- If asked about "traffic" or "when", use the traffic pattern data.
+- If asked about "where" or "countries", use the geographic data.
 
 Response:`;
   }
 
   private generateFallbackResponse(facts: StoredFact[]): string {
     if (facts.length === 0) {
-      return "I don't have any recent analytics data to answer your question. Please try generating facts first or wait for more data to be collected.";
+      return "I don't have any recent analytics data to answer your question.";
     }
 
-    return `Based on recent data:\n${facts.map((f) => `• ${f.factText}`).join("\n")}`;
+    const grouped: Record<string, string[]> = {};
+    for (const f of facts) {
+      const type = f.factType;
+      if (!grouped[type]) grouped[type] = [];
+      grouped[type].push(f.factText);
+    }
+
+    let response = "Here's what I know from recent analytics:\n\n";
+    for (const [type, texts] of Object.entries(grouped)) {
+      response += `**${type.charAt(0).toUpperCase() + type.slice(1).replace("_", " ")}:**\n`;
+      response += texts.map((t) => `- ${t}`).join("\n") + "\n\n";
+    }
+
+    return response.trim();
   }
 
   private async getSession(sessionId: string): Promise<ChatSession> {
@@ -128,9 +239,9 @@ Response:`;
       try {
         const data = await this.redis.get(`chat:session:${sessionId}`);
         if (data) {
-          return JSON.parse(data);
+          return JSON.parse(data) as ChatSession;
         }
-      } catch (error) {
+      } catch {
         this.logger.error("Failed to get session from Redis");
       }
     }
@@ -150,65 +261,10 @@ Response:`;
           SESSION_TTL,
           JSON.stringify(session),
         );
-      } catch (error) {
+      } catch {
         this.logger.error("Failed to save session to Redis");
       }
     }
-  }
-
-  async *chatStream(
-    sessionId: string,
-    userMessage: string,
-  ): AsyncGenerator<{ type: "chunk" | "facts"; data: string | StoredFact[] }> {
-    const session = await this.getSession(sessionId);
-    session.messages.push({
-      role: "user",
-      content: userMessage,
-      timestamp: Date.now(),
-    });
-
-    let relevantFacts: StoredFact[] = [];
-    try {
-      const queryEmbedding = await this.ollamaService.getEmbedding(userMessage);
-      relevantFacts = await this.factsRepository.searchSimilar(
-        queryEmbedding,
-        5,
-      );
-    } catch (error) {
-      this.logger.warn("Could not get embeddings, using recent facts");
-      relevantFacts = await this.factsRepository.getRecentFacts(5);
-    }
-
-    yield { type: "facts", data: relevantFacts };
-
-    const factsContext = relevantFacts.map((f) => `- ${f.factText}`).join("\n");
-    const historyContext = session.messages
-      .slice(-6)
-      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-      .join("\n");
-
-    const prompt = this.buildPrompt(userMessage, factsContext, historyContext);
-
-    let fullResponse = "";
-    try {
-      // Stream the response
-      for await (const chunk of this.ollamaService.generateStream(prompt)) {
-        fullResponse += chunk;
-        yield { type: "chunk", data: chunk };
-      }
-    } catch (error) {
-      this.logger.error("LLM streaming failed, using fallback", error);
-      const fallback = this.generateFallbackResponse(relevantFacts);
-      fullResponse = fallback;
-      yield { type: "chunk", data: fallback };
-    }
-
-    session.messages.push({
-      role: "assistant",
-      content: fullResponse,
-      timestamp: Date.now(),
-    });
-    await this.saveSession(session);
   }
 
   async clearSession(sessionId: string): Promise<void> {
