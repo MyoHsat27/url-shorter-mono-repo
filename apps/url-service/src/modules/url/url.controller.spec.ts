@@ -6,6 +6,7 @@ import { RedirectService } from "./services/redirect.service";
 import { NotFoundException } from "@url-shortner/nestjs-common";
 import { CreateUrlDto } from "./dto";
 import { ClickEventPublisher } from "./services/click-event.publisher";
+import { AUTH_MODULE_OPTIONS } from "@url-shortner/nestjs-common";
 import { Request, Response } from "express";
 
 describe("UrlController", () => {
@@ -42,6 +43,10 @@ describe("UrlController", () => {
           provide: ClickEventPublisher,
           useValue: mockClickEventPublisher,
         },
+        {
+          provide: AUTH_MODULE_OPTIONS,
+          useValue: { jwksUri: "http://localhost/.well-known/jwks.json" },
+        },
       ],
     }).compile();
 
@@ -68,7 +73,7 @@ describe("UrlController", () => {
       urlService.createShortUrl.mockResolvedValue(expectedResult);
 
       // Act
-      const result = await controller.create(dto);
+      const result = await controller.create(dto, null);
 
       // Assert
       expect(result).toEqual(expectedResult);
@@ -89,7 +94,7 @@ describe("UrlController", () => {
       urlService.createShortUrl.mockResolvedValue(expectedResult);
 
       // Act
-      const result = await controller.create(dto);
+      const result = await controller.create(dto, { sub: "user-123" } as any);
 
       // Assert
       expect(result).toEqual(expectedResult);
@@ -106,7 +111,9 @@ describe("UrlController", () => {
       urlService.createShortUrl.mockRejectedValue(error);
 
       // Act & Assert
-      await expect(controller.create(dto)).rejects.toThrow("Service error");
+      await expect(controller.create(dto, null)).rejects.toThrow(
+        "Service error",
+      );
     });
   });
 

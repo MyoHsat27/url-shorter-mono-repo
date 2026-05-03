@@ -10,6 +10,8 @@ import { UrlServiceStack } from "../lib/services/url/url-service.stack";
 import { WebStack } from "../lib/services/web/web.stack";
 import { AnalyticsDataStack } from "../lib/services/analytics/analytics-data.stack";
 import { AnalyticsServiceStack } from "../lib/services/analytics/analytics-service.stack";
+import { AuthDataStack } from "../lib/services/auth/auth-data.stack";
+import { AuthServiceStack } from "../lib/services/auth/auth-service.stack";
 
 const app = new cdk.App();
 const env = {
@@ -40,6 +42,19 @@ new AnalyticsServiceStack(app, "AnalyticsServiceStack", {
   clickEventsQueue: analyticsData.clickEventsQueue.queue,
   clicksTable: analyticsData.clicksTable,
   imageUrl: analyticsImage,
+  env,
+});
+
+// Services: Auth
+const authData = new AuthDataStack(app, "AuthDataStack", { env });
+
+const authImage = app.node.tryGetContext("authImage");
+new AuthServiceStack(app, "AuthServiceStack", {
+  vpc: network.vpc,
+  cluster: network.cluster,
+  usersTable: authData.usersTable,
+  listener: alb.albService.httpListener,
+  imageUrl: authImage,
   env,
 });
 

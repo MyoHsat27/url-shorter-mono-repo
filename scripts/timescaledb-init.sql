@@ -50,7 +50,7 @@ SELECT add_continuous_aggregate_policy('hourly_stats',
 CREATE TABLE IF NOT EXISTS analytics_facts (
     id          SERIAL PRIMARY KEY,
     fact_text   TEXT NOT NULL,
-    embedding   vector(768),
+    embedding   vector(1024),
     fact_type   TEXT NOT NULL,
     short_code  TEXT,
     time_range  TSTZRANGE,

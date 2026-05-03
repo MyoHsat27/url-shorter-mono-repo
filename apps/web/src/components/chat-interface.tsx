@@ -8,8 +8,12 @@ import {
   Maximize2,
   Minimize2,
   Trash2,
+  Globe,
+  User,
+  Lock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth-context";
 
 interface Message {
   role: "user" | "assistant";
@@ -21,35 +25,49 @@ interface Message {
   }>;
 }
 
-const SUGGESTIONS = [
+type ChatTab = "global" | "user";
+
+const GLOBAL_SUGGESTIONS = [
   "What are the trending links?",
   "Show me traffic patterns",
-  "Where is my traffic coming from?",
-  "Give me a weekly summary",
+  "Which countries use the service most?",
+  "Give me a summary of recent activity",
 ];
 
-const ANALYTICS_API =
+const USER_SUGGESTIONS = [
+  "How are my links performing?",
+  "Which of my links gets the most clicks?",
+  "Show me my link traffic patterns",
+  "What countries visit my links?",
+];
+
+const ANALYTICS_API_URL =
   process.env.NEXT_PUBLIC_ANALYTICS_API_URL || "http://localhost:3200";
 
-function getSessionId(): string {
-  if (typeof window === "undefined") return "";
-  let sessionId = sessionStorage.getItem("chat-session-id");
-  if (!sessionId) {
-    sessionId = crypto.randomUUID();
-    sessionStorage.setItem("chat-session-id", sessionId);
-  }
-  return sessionId;
-}
-
 export function ChatInterface() {
+  const { isAuthenticated, getAuthHeaders } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [activeTab, setActiveTab] = useState<ChatTab>("global");
+  const [globalMessages, setGlobalMessages] = useState<Message[]>([]);
+  const [userMessages, setUserMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-
+  const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [globalSessionId] = useState(
+    () => `global-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+  const [userSessionId] = useState(
+    () => `user-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
+
+  const messages = activeTab === "global" ? globalMessages : userMessages;
+  const setMessages =
+    activeTab === "global" ? setGlobalMessages : setUserMessages;
+  const sessionId = activeTab === "global" ? globalSessionId : userSessionId;
+  const suggestions =
+    activeTab === "global" ? GLOBAL_SUGGESTIONS : USER_SUGGESTIONS;
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -57,54 +75,58 @@ export function ChatInterface() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isOpen, scrollToBottom]);
+  }, [globalMessages, userMessages, scrollToBottom]);
 
   useEffect(() => {
-    if (isOpen && !isMinimized) {
-      inputRef.current?.focus();
+    if (isOpen && inputRef.current) {
+      inputRef.current.focus();
     }
-  }, [isOpen, isMinimized]);
+  }, [isOpen]);
 
-  const handleClearChat = () => {
-    setMessages([]);
-    sessionStorage.removeItem("chat-session-id");
-  };
+  const handleSend = async (messageText?: string) => {
+    const text = messageText || input.trim();
+    if (!text || isStreaming) return;
 
-  const sendMessage = async (userMessage: string) => {
-    if (!userMessage.trim() || isLoading) return;
-
+    const userMessage: Message = { role: "user", content: text };
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: userMessage }]);
-    setIsLoading(true);
+    setIsStreaming(true);
 
     try {
-      const sessionId = getSessionId();
-      const response = await fetch(`${ANALYTICS_API}/chat/stream`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: userMessage,
-          sessionId,
-        }),
-      });
+      const streamUrl =
+        activeTab === "user"
+          ? `${ANALYTICS_API_URL}/chat/user/stream`
+          : `${ANALYTICS_API_URL}/chat/stream`;
 
-      if (!response.ok) {
-        throw new Error("Failed to send message");
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (activeTab === "user") {
+        Object.assign(headers, getAuthHeaders());
       }
 
+      const response = await fetch(streamUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ message: text, sessionId }),
+      });
+
+      if (!response.ok) throw new Error("Stream failed");
+
       const reader = response.body?.getReader();
+      if (!reader) throw new Error("No reader");
+
       const decoder = new TextDecoder();
+      let assistantContent = "";
+      const sourceFacts: Message["sourceFacts"] = [];
 
-      if (!reader) throw new Error("No reader available");
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "", sourceFacts: [] },
+      ]);
 
-      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-
-      let assistantMessageContent = "";
-      let currentFacts: NonNullable<Message["sourceFacts"]> = [];
       let buffer = "";
-
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -114,70 +136,88 @@ export function ChatInterface() {
         buffer = lines.pop() || "";
 
         for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
-
-              if (data.type === "facts") {
-                currentFacts = data.data;
-                setMessages((prev) => {
-                  const newMessages = [...prev];
-                  const lastMessage = {
-                    ...newMessages[newMessages.length - 1],
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const parsed = JSON.parse(line.slice(6)) as {
+              type: string;
+              data:
+                | string
+                | Array<{
+                    factText: string;
+                    factType: string;
+                    similarity?: number;
+                  }>;
+            };
+            if (parsed.type === "chunk" && typeof parsed.data === "string") {
+              assistantContent += parsed.data;
+              setMessages((prev) => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last?.role === "assistant") {
+                  updated[updated.length - 1] = {
+                    ...last,
+                    content: assistantContent,
                   };
-                  if (lastMessage.role === "assistant") {
-                    lastMessage.sourceFacts = currentFacts;
-                  }
-                  newMessages[newMessages.length - 1] = lastMessage;
-                  return newMessages;
-                });
-              } else if (data.type === "chunk") {
-                assistantMessageContent += data.data;
-                setMessages((prev) => {
-                  const newMessages = [...prev];
-                  const lastMessage = {
-                    ...newMessages[newMessages.length - 1],
+                }
+                return updated;
+              });
+            } else if (parsed.type === "facts" && Array.isArray(parsed.data)) {
+              sourceFacts.push(
+                ...(
+                  parsed.data as Array<{
+                    factText: string;
+                    factType: string;
+                    similarity?: number;
+                  }>
+                ).slice(0, 3),
+              );
+              setMessages((prev) => {
+                const updated = [...prev];
+                const last = updated[updated.length - 1];
+                if (last?.role === "assistant") {
+                  updated[updated.length - 1] = {
+                    ...last,
+                    sourceFacts: [...sourceFacts],
                   };
-                  if (lastMessage.role === "assistant") {
-                    lastMessage.content = assistantMessageContent;
-                  }
-                  newMessages[newMessages.length - 1] = lastMessage;
-                  return newMessages;
-                });
-              }
-            } catch (e) {
-              console.error("Error parsing SSE data", e);
+                }
+                return updated;
+              });
             }
+          } catch {
+            // skip malformed SSE
           }
         }
       }
-    } catch (error) {
-      console.error("Chat error:", error);
+    } catch {
       setMessages((prev) => [
-        ...prev,
+        ...prev.filter((m) => m.role !== "assistant" || m.content !== ""),
         {
           role: "assistant",
-          content:
-            "Sorry, I encountered an error connecting to the analytics service. Please make sure it's running and try again.",
+          content: "Sorry, I couldn't connect to the analytics service.",
         },
       ]);
     } finally {
-      setIsLoading(false);
+      setIsStreaming(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await sendMessage(input.trim());
+  const clearChat = () => {
+    setMessages([]);
+  };
+
+  const handleTabChange = (tab: ChatTab) => {
+    if (tab === "user" && !isAuthenticated) return;
+    setActiveTab(tab);
   };
 
   if (!isOpen) {
     return (
       <button
         onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 p-4 bg-blue-600 text-white rounded-full shadow-lg hover:bg-blue-700 transition-all z-50 hover:scale-105"
+        className="fixed right-6 bottom-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-neutral-900 text-white shadow-lg transition-all hover:scale-105 hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+        aria-label="Open chat"
       >
-        <MessageCircle size={24} />
+        <MessageCircle className="h-6 w-6" />
       </button>
     );
   }
@@ -185,178 +225,207 @@ export function ChatInterface() {
   return (
     <div
       className={cn(
-        "fixed bottom-6 right-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl rounded-lg overflow-hidden transition-all z-50 flex flex-col",
-        isMinimized ? "w-72 h-14" : "w-96 h-[600px] max-h-[80vh]",
+        "fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-neutral-200/60 bg-white shadow-2xl dark:border-neutral-800/60 dark:bg-neutral-900",
+        isExpanded
+          ? "inset-4 sm:inset-8"
+          : "right-4 bottom-4 h-[32rem] w-[22rem] sm:right-6 sm:bottom-6 sm:h-[36rem] sm:w-96",
       )}
     >
       {/* Header */}
-      <div
-        className="flex items-center justify-between p-3 bg-blue-600 text-white cursor-pointer shrink-0"
-        onClick={() => isMinimized && setIsMinimized(false)}
-      >
+      <div className="flex items-center justify-between border-b border-neutral-200/60 bg-neutral-50 px-4 py-3 dark:border-neutral-800/60 dark:bg-neutral-800/50">
         <div className="flex items-center gap-2">
-          <MessageCircle size={18} />
-          <span className="font-semibold text-sm">Analytics AI</span>
+          <MessageCircle className="h-4 w-4 text-neutral-500" />
+          <span className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+            Analytics Chat
+          </span>
         </div>
-        <div
-          className="flex items-center gap-1"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {!isMinimized && messages.length > 0 && (
-            <button
-              onClick={handleClearChat}
-              className="p-1 hover:bg-blue-700 rounded"
-              title="Clear chat"
-            >
-              <Trash2 size={14} />
-            </button>
-          )}
+        <div className="flex items-center gap-1">
           <button
-            onClick={() => setIsMinimized(!isMinimized)}
-            className="p-1 hover:bg-blue-700 rounded"
+            onClick={clearChat}
+            className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-600 dark:hover:bg-neutral-700 dark:hover:text-neutral-300"
+            title="Clear chat"
           >
-            {isMinimized ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-600 dark:hover:bg-neutral-700 dark:hover:text-neutral-300"
+          >
+            {isExpanded ? (
+              <Minimize2 className="h-3.5 w-3.5" />
+            ) : (
+              <Maximize2 className="h-3.5 w-3.5" />
+            )}
           </button>
           <button
             onClick={() => setIsOpen(false)}
-            className="p-1 hover:bg-blue-700 rounded"
+            className="rounded-lg p-1.5 text-neutral-400 transition-colors hover:bg-neutral-200 hover:text-neutral-600 dark:hover:bg-neutral-700 dark:hover:text-neutral-300"
           >
-            <X size={14} />
+            <X className="h-3.5 w-3.5" />
           </button>
         </div>
       </div>
 
-      {/* Messages */}
-      {!isMinimized && (
-        <>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {messages.length === 0 && (
-              <div className="space-y-4">
-                <div className="text-center text-zinc-500 dark:text-zinc-400 mt-4">
-                  <MessageCircle
-                    size={32}
-                    className="mx-auto mb-2 opacity-50"
-                  />
-                  <p className="font-medium text-sm">
-                    Hi! I can help you analyze your link performance.
-                  </p>
-                  <p className="text-xs mt-1 text-zinc-400 dark:text-zinc-500">
-                    Ask me about trending links, traffic patterns, or visitor
-                    locations.
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2 justify-center mt-4">
-                  {SUGGESTIONS.map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      onClick={() => void sendMessage(suggestion)}
-                      className="text-xs px-3 py-1.5 rounded-full border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+      {/* Tabs */}
+      <div className="flex border-b border-neutral-200/60 dark:border-neutral-800/60">
+        <button
+          onClick={() => handleTabChange("global")}
+          className={cn(
+            "flex flex-1 items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors",
+            activeTab === "global"
+              ? "border-b-2 border-neutral-900 text-neutral-900 dark:border-neutral-100 dark:text-neutral-100"
+              : "text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300",
+          )}
+        >
+          <Globe className="h-3.5 w-3.5" />
+          Global
+        </button>
+        <button
+          onClick={() => handleTabChange("user")}
+          className={cn(
+            "flex flex-1 items-center justify-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors",
+            activeTab === "user"
+              ? "border-b-2 border-neutral-900 text-neutral-900 dark:border-neutral-100 dark:text-neutral-100"
+              : !isAuthenticated
+                ? "cursor-not-allowed text-neutral-300 dark:text-neutral-600"
+                : "text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300",
+          )}
+          disabled={!isAuthenticated}
+        >
+          {isAuthenticated ? (
+            <User className="h-3.5 w-3.5" />
+          ) : (
+            <Lock className="h-3.5 w-3.5" />
+          )}
+          My Links
+        </button>
+      </div>
 
-            {messages.map((msg, index) => (
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {!isAuthenticated &&
+          activeTab === "global" &&
+          messages.length === 0 && (
+            <div className="mb-4 rounded-xl bg-blue-50 p-3 text-xs text-blue-600 dark:bg-blue-950/30 dark:text-blue-400">
+              Sign in to access personalized analytics in the &quot;My
+              Links&quot; tab.
+            </div>
+          )}
+
+        {messages.length === 0 ? (
+          <div className="space-y-3">
+            <p className="text-center text-xs text-neutral-400 dark:text-neutral-500">
+              {activeTab === "global"
+                ? "Ask about global link analytics"
+                : "Ask about your personal link analytics"}
+            </p>
+            <div className="grid gap-2">
+              {suggestions.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  onClick={() => void handleSend(suggestion)}
+                  className="rounded-xl border border-neutral-200/60 px-3 py-2 text-left text-xs text-neutral-600 transition-colors hover:border-neutral-300 hover:bg-neutral-50 dark:border-neutral-800/60 dark:text-neutral-400 dark:hover:border-neutral-700 dark:hover:bg-neutral-800/50"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            {messages.map((msg, i) => (
               <div
-                key={index}
+                key={i}
                 className={cn(
-                  "flex flex-col max-w-[85%] space-y-1",
-                  msg.role === "user"
-                    ? "ml-auto items-end"
-                    : "mr-auto items-start",
+                  "mb-3",
+                  msg.role === "user" ? "flex justify-end" : "flex",
                 )}
               >
                 <div
                   className={cn(
-                    "p-3 rounded-2xl text-sm leading-relaxed",
+                    "max-w-[85%] rounded-xl px-3 py-2 text-sm",
                     msg.role === "user"
-                      ? "bg-blue-600 text-white rounded-br-none"
-                      : "bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 rounded-bl-none",
+                      ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                      : "bg-neutral-100 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-200",
                   )}
                 >
-                  <div className="whitespace-pre-wrap break-words">
-                    {msg.content}
+                  <div className="whitespace-pre-wrap leading-relaxed">
+                    {msg.content || (
+                      <span className="inline-flex items-center gap-1 text-neutral-400">
+                        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                        <span
+                          className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current"
+                          style={{ animationDelay: "0.2s" }}
+                        />
+                        <span
+                          className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-current"
+                          style={{ animationDelay: "0.4s" }}
+                        />
+                      </span>
+                    )}
                   </div>
-                </div>
 
-                {msg.sourceFacts && msg.sourceFacts.length > 0 && (
-                  <div className="text-xs text-zinc-500 dark:text-zinc-400 px-2 max-w-full">
-                    <details>
-                      <summary className="cursor-pointer hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">
-                        {msg.sourceFacts.length} source
-                        {msg.sourceFacts.length > 1 ? "s" : ""} used
-                      </summary>
-                      <div className="mt-1 space-y-1 bg-zinc-50 dark:bg-zinc-900 p-2 rounded border border-zinc-200 dark:border-zinc-800 max-h-40 overflow-y-auto">
-                        {msg.sourceFacts.map((fact, i) => (
-                          <div
-                            key={i}
-                            className="border-b border-zinc-200 dark:border-zinc-800 last:border-0 pb-1 last:pb-0"
-                          >
-                            <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-200 dark:bg-zinc-700 mr-1">
-                              {fact.factType}
-                            </span>
-                            {fact.factText}
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  </div>
-                )}
+                  {msg.sourceFacts && msg.sourceFacts.length > 0 && (
+                    <div className="mt-2 border-t border-neutral-200/50 pt-2 dark:border-neutral-700/50">
+                      <p className="mb-1 text-[10px] font-medium uppercase tracking-wider text-neutral-400">
+                        Sources
+                      </p>
+                      {msg.sourceFacts.map((fact, fi) => (
+                        <div
+                          key={fi}
+                          className="mb-1 rounded-md bg-white/50 px-2 py-1 text-[11px] text-neutral-500 dark:bg-neutral-900/50 dark:text-neutral-400"
+                        >
+                          <span className="mr-1 rounded bg-neutral-200 px-1 py-0.5 text-[9px] font-medium uppercase dark:bg-neutral-700">
+                            {fact.factType}
+                          </span>
+                          {fact.factText}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             ))}
-
-            {isLoading &&
-              messages[messages.length - 1]?.content === "" &&
-              messages[messages.length - 1]?.role === "assistant" && (
-                <div className="flex justify-start">
-                  <div className="bg-zinc-100 dark:bg-zinc-800 p-3 rounded-2xl rounded-bl-none text-sm text-zinc-500">
-                    <span className="inline-flex gap-1">
-                      <span className="animate-bounce [animation-delay:0ms]">
-                        .
-                      </span>
-                      <span className="animate-bounce [animation-delay:150ms]">
-                        .
-                      </span>
-                      <span className="animate-bounce [animation-delay:300ms]">
-                        .
-                      </span>
-                    </span>
-                  </div>
-                </div>
-              )}
-
             <div ref={messagesEndRef} />
-          </div>
+          </>
+        )}
+      </div>
 
-          {/* Input */}
-          <form
-            onSubmit={(e) => void handleSubmit(e)}
-            className="p-3 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shrink-0"
+      {/* Input */}
+      <div className="border-t border-neutral-200/60 p-3 dark:border-neutral-800/60">
+        <div className="flex items-center gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void handleSend();
+              }
+            }}
+            placeholder={
+              activeTab === "user" && !isAuthenticated
+                ? "Sign in to chat about your links..."
+                : "Ask about analytics..."
+            }
+            disabled={isStreaming || (activeTab === "user" && !isAuthenticated)}
+            className="flex-1 rounded-xl border border-neutral-200 bg-neutral-50 px-3 py-2.5 text-sm outline-none transition-all placeholder:text-neutral-400 focus:border-neutral-300 focus:ring-2 focus:ring-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-800 dark:placeholder:text-neutral-500 dark:focus:border-neutral-600 dark:focus:ring-neutral-800"
+          />
+          <button
+            onClick={() => void handleSend()}
+            disabled={
+              !input.trim() ||
+              isStreaming ||
+              (activeTab === "user" && !isAuthenticated)
+            }
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-900 text-white transition-all hover:bg-neutral-800 disabled:opacity-30 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
           >
-            <div className="flex gap-2">
-              <input
-                ref={inputRef}
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask about your analytics..."
-                className="flex-1 px-4 py-2 text-sm border border-zinc-300 dark:border-zinc-700 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500 bg-transparent text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400"
-                disabled={isLoading}
-              />
-              <button
-                type="submit"
-                disabled={!input.trim() || isLoading}
-                className="p-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                <Send size={18} />
-              </button>
-            </div>
-          </form>
-        </>
-      )}
+            <Send className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

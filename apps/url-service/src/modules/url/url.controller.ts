@@ -1,9 +1,25 @@
-import { Body, Controller, Get, Param, Post, Req, Res } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from "@nestjs/common";
 import { Request, Response } from "express";
 import { UrlService } from "./services/url.service";
 import { RedirectService } from "./services/redirect.service";
 import { ClickEventPublisher } from "./services/click-event.publisher";
-import { NotFoundException } from "@url-shortner/nestjs-common";
+import {
+  NotFoundException,
+  OptionalAuthGuard,
+  JwksAuthGuard,
+  CurrentUser,
+  AuthUser,
+} from "@url-shortner/nestjs-common";
 import { CreateUrlDto } from "./dto";
 
 @Controller()
@@ -15,8 +31,40 @@ export class UrlController {
   ) {}
 
   @Post("/api")
-  async create(@Body() dto: CreateUrlDto) {
+  @UseGuards(OptionalAuthGuard)
+  async create(
+    @Body() dto: CreateUrlDto,
+    @CurrentUser() user: AuthUser | null,
+  ) {
+    // If user is authenticated, use their ID
+    if (user) {
+      dto.userId = user.sub;
+    }
     return this.urlService.createShortUrl(dto);
+  }
+
+  @Get("/api/urls")
+  @UseGuards(JwksAuthGuard)
+  async getUserUrls(@CurrentUser() user: AuthUser) {
+    return this.urlService.getUserUrls(user.sub);
+  }
+
+  @Get("/api/urls/:shortCode")
+  @UseGuards(JwksAuthGuard)
+  async getUserUrl(
+    @Param("shortCode") shortCode: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.urlService.getUserUrl(user.sub, shortCode);
+  }
+
+  @Delete("/api/urls/:shortCode")
+  @UseGuards(JwksAuthGuard)
+  async deleteUrl(
+    @Param("shortCode") shortCode: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.urlService.deleteUrl(user.sub, shortCode);
   }
 
   @Get("/:shortCode")

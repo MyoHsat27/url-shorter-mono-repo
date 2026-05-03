@@ -4,7 +4,7 @@ import { AppController } from "./app.controller";
 import { AppService } from "./app.service";
 import { UrlModule } from "./modules/url/url.module";
 import { AppConfigModule } from "./config/config.module";
-import { CoreModule } from "@url-shortner/nestjs-common";
+import { CoreModule, AuthModule } from "@url-shortner/nestjs-common";
 import { DynamoDBModule, RedisModule, SqsModule } from "./infrastructure";
 
 @Module({
@@ -20,6 +20,13 @@ import { DynamoDBModule, RedisModule, SqsModule } from "./infrastructure";
         debug: configService.get<string>("NODE_ENV") !== "production",
       }),
       inject: [ConfigService],
+    }),
+
+    // Auth module
+    AuthModule.forRoot({
+      jwksUri:
+        process.env.AUTH_JWKS_URI ||
+        "http://localhost:3300/.well-known/jwks.json",
     }),
 
     // Infrastructure modules

@@ -3,6 +3,8 @@ import {
   DynamoDBDocumentClient,
   GetCommand,
   PutCommand,
+  QueryCommand,
+  DeleteCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { ShortUrlEntity } from "../entities/short-url.entity";
 import { IUrlRepository } from "./url.repository.interface";
@@ -51,5 +53,32 @@ export class DynamoUrlRepository implements IUrlRepository {
     );
 
     return res.Item ? (res.Item as ShortUrlEntity) : null;
+  }
+
+  async findByUserId(userId: string): Promise<ShortUrlEntity[]> {
+    const res = await this.db.send(
+      new QueryCommand({
+        TableName: this.tableName,
+        IndexName: "userId-index",
+        KeyConditionExpression: "userId = :userId",
+        ExpressionAttributeValues: {
+          ":userId": userId,
+        },
+      }),
+    );
+
+    return (res.Items as ShortUrlEntity[]) || [];
+  }
+
+  async delete(shortCode: string): Promise<void> {
+    await this.db.send(
+      new DeleteCommand({
+        TableName: this.tableName,
+        Key: {
+          pk: `URL#${shortCode}`,
+          sk: "METADATA",
+        },
+      }),
+    );
   }
 }

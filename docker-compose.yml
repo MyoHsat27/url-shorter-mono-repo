@@ -43,6 +43,21 @@ services:
     networks:
       - url-network
 
+  auth-service:
+    container_name: auth-service
+    build:
+      context: .
+      dockerfile: apps/auth-service/Dockerfile
+    ports:
+      - "3300:3300"
+    env_file:
+      - ./apps/auth-service/.env
+    depends_on:
+      localstack:
+        condition: service_healthy
+    networks:
+      - url-network
+
   localstack:
     container_name: localstack
     image: localstack/localstack:latest
@@ -86,17 +101,6 @@ services:
       timeout: 5s
       retries: 5
 
-  ollama:
-    container_name: ollama
-    build:
-      context: infra/ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama-data:/root/.ollama
-    networks:
-      - url-network
-
   redis:
     container_name: redis-local
     image: redis:7-alpine
@@ -120,7 +124,6 @@ services:
 volumes:
   localstack-data:
   timescaledb-data:
-  ollama-data:
 
 networks:
   url-network:

@@ -25,10 +25,12 @@ const configuration = () => ({
     password: process.env.TIMESCALE_PASSWORD || "analytics",
     database: process.env.TIMESCALE_DATABASE || "analytics",
   },
-  ollama: {
-    host: process.env.OLLAMA_HOST || "http://127.0.0.1:11434",
-    embeddingModel: process.env.OLLAMA_EMBEDDING_MODEL || "nomic-embed-text",
-    generateModel: process.env.OLLAMA_GENERATE_MODEL || "llama3.2",
+  bedrock: {
+    modelId:
+      process.env.BEDROCK_MODEL_ID ||
+      "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    embeddingModelId:
+      process.env.BEDROCK_EMBEDDING_MODEL_ID || "amazon.titan-embed-text-v2:0",
   },
 });
 

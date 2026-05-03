@@ -16,13 +16,35 @@ awslocal dynamodb create-table \
   --attribute-definitions \
     AttributeName=pk,AttributeType=S \
     AttributeName=sk,AttributeType=S \
+    AttributeName=userId,AttributeType=S \
   --key-schema \
     AttributeName=pk,KeyType=HASH \
     AttributeName=sk,KeyType=RANGE \
+  --global-secondary-indexes \
+    '[{"IndexName":"userId-index","KeySchema":[{"AttributeName":"userId","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}]' \
   --billing-mode PAY_PER_REQUEST \
   --region us-east-1 || echo "Table 'urls' already exists"
 
-echo "DynamoDB table created successfully"
+echo "DynamoDB table 'urls' created successfully"
+
+# DynamoDB: Create Users table
+echo "Creating DynamoDB table: users"
+
+awslocal dynamodb create-table \
+  --table-name users \
+  --attribute-definitions \
+    AttributeName=pk,AttributeType=S \
+    AttributeName=sk,AttributeType=S \
+    AttributeName=email,AttributeType=S \
+  --key-schema \
+    AttributeName=pk,KeyType=HASH \
+    AttributeName=sk,KeyType=RANGE \
+  --global-secondary-indexes \
+    '[{"IndexName":"email-index","KeySchema":[{"AttributeName":"email","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}]' \
+  --billing-mode PAY_PER_REQUEST \
+  --region us-east-1 || echo "Table 'users' already exists"
+
+echo "DynamoDB table 'users' created successfully"
 
 # SQS: Create click analytics queue
 echo "Creating SQS queues..."

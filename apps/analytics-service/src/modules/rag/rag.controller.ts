@@ -1,9 +1,21 @@
-import { Body, Controller, Delete, Param, Post, Res } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Param,
+  Post,
+  Res,
+  UseGuards,
+} from "@nestjs/common";
 import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
 import { RagService } from "./rag.service";
 import { ChatRequestDto, ChatResponseDto } from "./dto/chat.dto";
 import { v4 as uuidv4 } from "uuid";
-
+import {
+  JwksAuthGuard,
+  CurrentUser,
+  AuthUser,
+} from "@url-shortner/nestjs-common";
 
 @ApiTags("Chat")
 @Controller("chat")
@@ -33,10 +45,11 @@ export class RagController {
   }
 
   @Post("stream")
-  @ApiOperation({ summary: "Stream a message to the analytics AI" })
+  @ApiOperation({ summary: "Stream a message to the analytics AI (global)" })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async chatStream(@Body() dto: ChatRequestDto, @Res() res: any) {
     const sessionId = dto.sessionId || uuidv4();
-    
+
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
@@ -48,8 +61,39 @@ export class RagController {
       )) {
         res.write(`data: ${JSON.stringify(chunk)}\n\n`);
       }
-    } catch (e) {
-      // In case of error, we try to send a valid SSE message if headers are already sent
+    } catch {
+      res.write(`data: ${JSON.stringify({ error: "Stream failed" })}\n\n`);
+    } finally {
+      res.end();
+    }
+  }
+
+  @Post("user/stream")
+  @UseGuards(JwksAuthGuard)
+  @ApiOperation({
+    summary: "Stream a message to the analytics AI (user-scoped)",
+  })
+  async userChatStream(
+    @Body() dto: ChatRequestDto,
+    @CurrentUser() user: AuthUser,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    @Res() res: any,
+  ) {
+    const sessionId = dto.sessionId || `user-${user.sub}-${uuidv4()}`;
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    try {
+      for await (const chunk of this.ragService.chatStream(
+        sessionId,
+        dto.message,
+        user.sub,
+      )) {
+        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+      }
+    } catch {
       res.write(`data: ${JSON.stringify({ error: "Stream failed" })}\n\n`);
     } finally {
       res.end();

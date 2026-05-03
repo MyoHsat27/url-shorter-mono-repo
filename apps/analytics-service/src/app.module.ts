@@ -5,9 +5,9 @@ import { BullBoardModule } from "@bull-board/nestjs";
 import { ExpressAdapter } from "@bull-board/express";
 import { AppService } from "./app.service";
 import { AppController } from "./app.controller";
-import { CoreModule } from "@url-shortner/nestjs-common";
+import { CoreModule, AuthModule } from "@url-shortner/nestjs-common";
 import { AppConfigModule } from "./config/config.module";
-import { SqsModule, TimescaleModule, OllamaModule } from "./infrastructure";
+import { SqsModule, TimescaleModule, BedrockModule } from "./infrastructure";
 import { ClickAnalyticsModule } from "./modules/click-analytics/click-analytics.module";
 import { FactGenerationModule } from "./modules/fact-generation/fact-generation.module";
 import { RagModule } from "./modules/rag/rag.module";
@@ -51,10 +51,17 @@ import { RedisModule } from "./infrastructure";
       inject: [ConfigService],
     }),
 
+    // Auth module
+    AuthModule.forRoot({
+      jwksUri:
+        process.env.AUTH_JWKS_URI ||
+        "http://localhost:3300/.well-known/jwks.json",
+    }),
+
     // Infrastructure modules
     SqsModule,
     TimescaleModule,
-    OllamaModule,
+    BedrockModule,
 
     // Feature modules
     ClickAnalyticsModule,

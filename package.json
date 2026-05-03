@@ -12,9 +12,11 @@
     "dev:url-service": "pnpm --filter url-service start:dev",
     "dev:analytics-service": "pnpm --filter analytics-service start:dev",
     "dev:web": "pnpm --filter web dev",
+    "dev:auth-service": "pnpm --filter auth-service start:dev",
     "build:url-service": "pnpm --filter url-service build",
     "build:analytics-service": "pnpm --filter analytics-service build",
     "build:web": "pnpm --filter web build",
+    "build:auth-service": "pnpm --filter auth-service build",
     "build:shared": "pnpm --filter shared build",
     "build:nestjs-common": "pnpm --filter nestjs-common build",
     "test": "pnpm -r test",
@@ -43,6 +45,10 @@
       "prettier --write",
       "eslint --fix",
       "pnpm --filter @apps/url-service test --bail --findRelatedTests"
+    ],
+    "apps/auth-service/**/*.ts": [
+      "prettier --write",
+      "eslint --fix"
     ],
     "**/*.{tsx,js,jsx,json,md,yml,yaml}": [
       "prettier --write",

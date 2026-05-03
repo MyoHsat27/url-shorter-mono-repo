@@ -23,6 +23,8 @@ describe("UrlService", () => {
     mockUrlRepository = {
       create: jest.fn(),
       findByShortCode: jest.fn(),
+      findByUserId: jest.fn(),
+      delete: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({

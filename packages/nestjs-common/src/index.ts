@@ -50,3 +50,13 @@ export {
 
 // Validation - Request validation with class-validator
 export { AppValidationPipe } from "./validations/validation.pipe";
+
+// Auth - JWT/JWK authentication guards and decorators
+export {
+  AuthModule,
+  JwksAuthGuard,
+  OptionalAuthGuard,
+  CurrentUser,
+  AUTH_MODULE_OPTIONS,
+} from "./auth";
+export type { AuthModuleOptions, AuthUser } from "./auth";

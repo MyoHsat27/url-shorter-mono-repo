@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { Pool } from "pg";
 import { TIMESCALE_POOL } from "src/infrastructure/timescale/timescale.module";
-import { OllamaService } from "src/infrastructure/ollama/ollama.service";
+import { BedrockService } from "src/infrastructure/bedrock/bedrock.service";
 import { AnalyticsRepository } from "../click-analytics/repositories/analytics.repository";
 import { InjectQueue } from "@nestjs/bullmq";
 import { Queue } from "bullmq";
@@ -23,7 +23,7 @@ export class FactGenerationService implements OnModuleInit {
   constructor(
     @Inject(TIMESCALE_POOL)
     private readonly pool: Pool,
-    private readonly ollamaService: OllamaService,
+    private readonly bedrockService: BedrockService,
     private readonly analyticsRepository: AnalyticsRepository,
     @InjectQueue(FACT_GENERATION_QUEUE)
     private readonly factQueue: Queue,
@@ -351,15 +351,15 @@ export class FactGenerationService implements OnModuleInit {
   }
 
   private async embedAndStoreFacts(facts: GeneratedFact[]): Promise<void> {
-    const isOllamaAvailable = await this.ollamaService.isAvailable();
+    const isBedrockAvailable = await this.bedrockService.isAvailable();
 
     for (const fact of facts) {
       try {
         let embedding: number[] | null = null;
 
-        if (isOllamaAvailable) {
+        if (isBedrockAvailable) {
           try {
-            embedding = await this.ollamaService.getEmbedding(fact.factText);
+            embedding = await this.bedrockService.getEmbedding(fact.factText);
           } catch (error) {
             this.logger.warn(
               `Embedding failed for fact, storing without embedding: ${error instanceof Error ? error.message : "Unknown"}`,
@@ -367,7 +367,7 @@ export class FactGenerationService implements OnModuleInit {
           }
         } else {
           this.logger.warn(
-            "Ollama not available, storing fact without embedding",
+            "Bedrock not available, storing fact without embedding",
           );
         }
 

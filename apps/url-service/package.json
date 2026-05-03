@@ -83,6 +83,9 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node",
+    "transformIgnorePatterns": [
+      "node_modules/(?!(\\.pnpm|jose)/)"
+    ],
     "moduleNameMapper": {
       "^src/(.*)$": "<rootDir>/$1"
     },

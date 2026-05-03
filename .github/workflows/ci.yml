@@ -23,6 +23,7 @@ jobs:
     outputs:
       url_service: ${{ steps.filter.outputs.url_service }}
       web_service: ${{ steps.filter.outputs.web_service }}
+      auth_service: ${{ steps.filter.outputs.auth_service }}
 
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +38,10 @@ jobs:
               - ".github/workflows/ci.yml"
             web_service:
               - "apps/web/**"
+              - "packages/**"
+              - ".github/workflows/ci.yml"
+            auth_service:
+              - "apps/auth-service/**"
               - "packages/**"
               - ".github/workflows/ci.yml"
 
@@ -121,4 +126,32 @@ jobs:
 
       - name: Build Web Service
         run: pnpm --filter @apps/web build
+
+  test-auth-service:
+    name: Test Auth Service
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.auth_service == 'true'
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared packages
+        run: pnpm build:nestjs-common
+
+      - name: Build Auth Service
+        run: pnpm build:auth-service
 

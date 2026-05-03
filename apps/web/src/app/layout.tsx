@@ -29,6 +29,7 @@ export const metadata: Metadata = {
 import { Header } from "@/components/header";
 import { Footer } from "@/components/footer";
 import { ChatInterface } from "@/components/chat-interface";
+import { AuthProvider } from "@/lib/auth-context";
 
 export default function RootLayout({
   children,
@@ -41,12 +42,14 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <ThemeProvider>
-          <div className="flex min-h-screen flex-col">
-            <Header />
-            <main className="flex flex-1 flex-col">{children}</main>
-            <Footer />
-            <ChatInterface />
-          </div>
+          <AuthProvider>
+            <div className="flex min-h-screen flex-col">
+              <Header />
+              <main className="flex flex-1 flex-col">{children}</main>
+              <Footer />
+              <ChatInterface />
+            </div>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

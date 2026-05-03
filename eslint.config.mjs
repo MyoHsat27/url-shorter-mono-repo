@@ -64,6 +64,24 @@ export default [
     },
   })),
 
+  // Auth Service (Nest.js)
+  ...tseslint.configs.recommendedTypeChecked.map((c) => ({
+    ...c,
+    files: ["apps/auth-service/**/*.ts"],
+    languageOptions: {
+      ...c.languageOptions,
+      globals: {
+        ...globals.node,
+        ...globals.jest,
+      },
+      parserOptions: {
+        ...c.languageOptions?.parserOptions,
+        project: ["apps/auth-service/tsconfig.json"],
+        tsconfigRootDir: __dirname,
+      },
+    },
+  })),
+
   // WEB (Next.js)
   ...tseslint.configs.recommendedTypeChecked.map((c) => ({
     ...c,

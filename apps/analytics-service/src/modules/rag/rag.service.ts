@@ -1,10 +1,16 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
-import { OllamaService } from "src/infrastructure";
+import { BedrockService } from "src/infrastructure/bedrock/bedrock.service";
 import {
   FactsRepository,
   StoredFact,
 } from "../fact-generation/facts.repository";
+import { ToolHandlerService } from "./tools/tool-handler.service";
+import { ANALYTICS_TOOLS } from "./tools/tool-definitions";
 import Redis from "ioredis";
+import {
+  type Message,
+  type ContentBlock,
+} from "@aws-sdk/client-bedrock-runtime";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -22,6 +28,7 @@ interface ChatSession {
 }
 
 const SESSION_TTL = 3600; // 1 hour
+const MAX_TOOL_ITERATIONS = 3; // Prevent runaway tool-calling loops
 
 @Injectable()
 export class RagService {
@@ -29,8 +36,9 @@ export class RagService {
   private redis: Redis | null = null;
 
   constructor(
-    private readonly ollamaService: OllamaService,
+    private readonly bedrockService: BedrockService,
     private readonly factsRepository: FactsRepository,
+    private readonly toolHandler: ToolHandlerService,
     @Inject("REDIS_CLIENT")
     redisClient: Redis | null,
   ) {
@@ -49,18 +57,15 @@ export class RagService {
     });
 
     const relevantFacts = await this.retrieveFacts(userMessage);
-
-    const factsContext = this.buildFactsContext(relevantFacts);
-    const historyContext = session.messages
-      .slice(-6)
-      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-      .join("\n");
-
-    const prompt = this.buildPrompt(userMessage, factsContext, historyContext);
+    const systemPrompt = this.buildSystemPrompt(relevantFacts);
 
     let response: string;
     try {
-      response = await this.ollamaService.generate(prompt);
+      response = await this.converseWithTools(
+        userMessage,
+        systemPrompt,
+        session,
+      );
     } catch (error) {
       this.logger.error("LLM generation failed, using fallback", error);
       response = this.generateFallbackResponse(relevantFacts);
@@ -79,6 +84,8 @@ export class RagService {
   async *chatStream(
     sessionId: string,
     userMessage: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _userId?: string,
   ): AsyncGenerator<{ type: "chunk" | "facts"; data: string | StoredFact[] }> {
     const session = await this.getSession(sessionId);
     session.messages.push({
@@ -88,22 +95,73 @@ export class RagService {
     });
 
     const relevantFacts = await this.retrieveFacts(userMessage);
-
     yield { type: "facts", data: relevantFacts };
 
-    const factsContext = this.buildFactsContext(relevantFacts);
-    const historyContext = session.messages
-      .slice(-6)
-      .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
-      .join("\n");
-
-    const prompt = this.buildPrompt(userMessage, factsContext, historyContext);
+    const systemPrompt = this.buildSystemPrompt(relevantFacts);
 
     let fullResponse = "";
     try {
-      for await (const chunk of this.ollamaService.generateStream(prompt)) {
-        fullResponse += chunk;
-        yield { type: "chunk", data: chunk };
+      // Build the Bedrock messages array from conversation
+      const messages = this.buildBedrockMessages(userMessage, session);
+
+      // Tool-calling loop: LLM may request tools multiple times
+      for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+        const converseResult = await this.bedrockService.converse(
+          messages,
+          systemPrompt,
+          ANALYTICS_TOOLS,
+        );
+
+        if (
+          converseResult.stopReason === "tool_use" &&
+          converseResult.toolUseRequests.length > 0
+        ) {
+          // LLM wants to call a tool — add assistant message with tool request
+          messages.push({
+            role: "assistant",
+            content: converseResult.output,
+          });
+
+          // Execute each tool and add results
+          const toolResults: ContentBlock[] = [];
+          for (const toolReq of converseResult.toolUseRequests) {
+            this.logger.log(
+              `LLM requested tool: ${toolReq.name}(${JSON.stringify(toolReq.input)})`,
+            );
+            const result = await this.toolHandler.execute(
+              toolReq.name,
+              toolReq.input,
+            );
+
+            toolResults.push({
+              toolResult: {
+                toolUseId: toolReq.toolUseId,
+                content: [{ json: result.data as Record<string, unknown> }],
+                status: result.success ? "success" : "error",
+              },
+            });
+          }
+
+          // Add tool results as a user message (Bedrock Converse API format)
+          messages.push({
+            role: "user",
+            content: toolResults,
+          });
+
+          // Continue the loop — LLM will process the tool results
+          continue;
+        }
+
+        // No more tool calls — stream the final response
+        for await (const chunk of this.bedrockService.converseStream(
+          messages,
+          systemPrompt,
+          ANALYTICS_TOOLS,
+        )) {
+          fullResponse += chunk;
+          yield { type: "chunk", data: chunk };
+        }
+        break;
       }
     } catch (error) {
       this.logger.error("LLM streaming failed, using fallback", error);
@@ -120,11 +178,96 @@ export class RagService {
     await this.saveSession(session);
   }
 
+  /**
+   * Non-streaming converse with tool-calling loop.
+   * Used by the non-streaming chat() endpoint.
+   */
+  private async converseWithTools(
+    userMessage: string,
+    systemPrompt: string,
+    session: ChatSession,
+  ): Promise<string> {
+    const messages = this.buildBedrockMessages(userMessage, session);
+
+    for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+      const result = await this.bedrockService.converse(
+        messages,
+        systemPrompt,
+        ANALYTICS_TOOLS,
+      );
+
+      if (
+        result.stopReason === "tool_use" &&
+        result.toolUseRequests.length > 0
+      ) {
+        messages.push({ role: "assistant", content: result.output });
+
+        const toolResults: ContentBlock[] = [];
+        for (const toolReq of result.toolUseRequests) {
+          this.logger.log(
+            `LLM requested tool: ${toolReq.name}(${JSON.stringify(toolReq.input)})`,
+          );
+          const toolResult = await this.toolHandler.execute(
+            toolReq.name,
+            toolReq.input,
+          );
+
+          toolResults.push({
+            toolResult: {
+              toolUseId: toolReq.toolUseId,
+              content: [{ json: toolResult.data as Record<string, unknown> }],
+              status: toolResult.success ? "success" : "error",
+            },
+          });
+        }
+
+        messages.push({ role: "user", content: toolResults });
+        continue;
+      }
+
+      // Extract text from the final response
+      return result.output
+        .map((block) => ("text" in block ? block.text : ""))
+        .filter(Boolean)
+        .join("");
+    }
+
+    return "I was unable to complete the analysis. Please try rephrasing your question.";
+  }
+
+  /**
+   * Build Bedrock Converse API messages from session history + current message.
+   */
+  private buildBedrockMessages(
+    userMessage: string,
+    session: ChatSession,
+  ): Message[] {
+    const messages: Message[] = [];
+
+    // Include last 6 messages from history
+    const history = session.messages.slice(-7, -1); // Exclude the current message we just pushed
+    for (const msg of history) {
+      messages.push({
+        role: msg.role,
+        content: [{ text: msg.content }],
+      });
+    }
+
+    // Add current user message
+    messages.push({
+      role: "user",
+      content: [{ text: userMessage }],
+    });
+
+    return messages;
+  }
+
   private async retrieveFacts(userMessage: string): Promise<StoredFact[]> {
     let relevantFacts: StoredFact[] = [];
 
     try {
-      const queryEmbedding = await this.ollamaService.getEmbedding(userMessage);
+      const queryEmbedding =
+        await this.bedrockService.getEmbedding(userMessage);
       relevantFacts = await this.factsRepository.searchSimilar(
         queryEmbedding,
         5,
@@ -154,6 +297,35 @@ export class RagService {
     return relevantFacts;
   }
 
+  /**
+   * Build the system prompt with pre-fetched facts as context.
+   * The LLM uses this context for general questions AND has tools for live queries.
+   */
+  private buildSystemPrompt(facts: StoredFact[]): string {
+    const factsContext = this.buildFactsContext(facts);
+
+    return `You are an analytics assistant for a URL shortener service. You help users understand their link performance, traffic patterns, geographic distribution, and trends.
+
+## Pre-loaded Analytics Context:
+${factsContext || "No pre-loaded analytics data available."}
+
+## Tools Available:
+You have access to tools that query LIVE data from the database. Use them when:
+- The user asks about a SPECIFIC link (use get_click_stats)
+- The user wants REAL-TIME trending data (use get_trending_links)
+- The user asks about geographic distribution (use get_geo_breakdown)
+- The user asks about traffic patterns or peak hours (use get_traffic_pattern)
+
+For general questions, use the pre-loaded context above. For specific or time-sensitive questions, prefer using tools for fresh data.
+
+## Instructions:
+- When you have both pre-loaded context and tool results, prefer the tool results (they are more current).
+- When mentioning links, always include both the short code and the full URL if available.
+- Be specific with numbers, percentages, and time periods.
+- If the data doesn't contain information to answer the question, say so clearly.
+- Keep responses concise but informative. Use bullet points for multiple insights.`;
+  }
+
   private buildFactsContext(facts: StoredFact[]): string {
     if (facts.length === 0) return "";
 
@@ -181,36 +353,6 @@ export class RagService {
     }
 
     return sections.join("\n\n");
-  }
-
-  private buildPrompt(
-    userMessage: string,
-    factsContext: string,
-    historyContext: string,
-  ): string {
-    return `You are an analytics assistant for a URL shortener service. You help users understand their link performance, traffic patterns, geographic distribution, and trends.
-
-## Available Analytics Data:
-${factsContext || "No recent analytics data available."}
-
-## Conversation History:
-${historyContext || "This is the start of the conversation."}
-
-## Current Question:
-${userMessage}
-
-## Instructions:
-- Answer based ONLY on the analytics data provided above. Do not make up data.
-- When mentioning links, always include both the short code and the actual URL if available.
-- Be specific with numbers, percentages, and time periods when available.
-- If the data doesn't contain information to answer the question, say so clearly and suggest what data might help.
-- Keep responses concise but informative. Use bullet points for multiple insights.
-- When discussing trends, reference the time period the data covers.
-- If asked about "popular" or "trending" links, use the trending data.
-- If asked about "traffic" or "when", use the traffic pattern data.
-- If asked about "where" or "countries", use the geographic data.
-
-Response:`;
   }
 
   private generateFallbackResponse(facts: StoredFact[]): string {

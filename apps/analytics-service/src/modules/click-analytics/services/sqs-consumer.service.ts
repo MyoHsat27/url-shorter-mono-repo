@@ -31,6 +31,7 @@ export class SqsConsumerService implements OnModuleInit {
       this.logger.warn("SQS_QUEUE_URL not configured, consumer not started");
       return;
     }
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
     this.startPolling();
   }
 
