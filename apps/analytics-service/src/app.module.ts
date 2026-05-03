@@ -11,6 +11,7 @@ import { SqsModule, TimescaleModule, BedrockModule } from "./infrastructure";
 import { ClickAnalyticsModule } from "./modules/click-analytics/click-analytics.module";
 import { FactGenerationModule } from "./modules/fact-generation/fact-generation.module";
 import { RagModule } from "./modules/rag/rag.module";
+import { McpModule } from "./modules/mcp/mcp.module";
 import { RedisModule } from "./infrastructure";
 
 @Module({
@@ -67,6 +68,7 @@ import { RedisModule } from "./infrastructure";
     ClickAnalyticsModule,
     FactGenerationModule,
     RagModule,
+    McpModule,
   ],
   controllers: [AppController],
   providers: [AppService],

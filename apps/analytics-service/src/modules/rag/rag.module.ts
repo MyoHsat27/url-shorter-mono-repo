@@ -8,6 +8,6 @@ import { ToolHandlerService } from "./tools/tool-handler.service";
   imports: [FactGenerationModule],
   controllers: [RagController],
   providers: [RagService, ToolHandlerService],
-  exports: [RagService],
+  exports: [RagService, ToolHandlerService],
 })
 export class RagModule {}

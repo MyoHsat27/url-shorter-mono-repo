@@ -19,7 +19,7 @@
     "build:auth-service": "pnpm --filter auth-service build",
     "build:shared": "pnpm --filter shared build",
     "build:nestjs-common": "pnpm --filter nestjs-common build",
-    "test": "pnpm -r test",
+    "test": "pnpm -r test --passWithNoTests",
     "prepare": "husky"
   },
   "keywords": [],
